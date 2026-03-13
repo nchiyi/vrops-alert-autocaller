@@ -40,6 +40,17 @@ webgui:
   users:
     admin: "CHANGE_ME_ADMIN_PASS"       # 管理員密碼
 
+# Twilio 外撥設定（與 SIP 二選一，預設停用）
+# 啟用後系統改用 Twilio REST API 撥出電話，不再使用 pjsua2/SIP
+twilio:
+  enabled: false                        # true = 改用 Twilio；false = 使用 SIP（預設）
+  account_sid: "CHANGE_ME_ACCOUNT_SID"  # Twilio Console → Account Info → Account SID
+  auth_token: "CHANGE_ME_AUTH_TOKEN"    # Twilio Console → Account Info → Auth Token
+  from_number: "+1XXXXXXXXXX"           # 購買或驗證的 Twilio 電話號碼（E.164 格式）
+  public_base_url: "https://your-server.example.com"
+  # ↑ 本服務對外可連線的 HTTPS URL（Twilio 需能呼叫 /twiml/ 及 /audio/ 端點）
+  #   若使用 ngrok 測試：https://xxxx.ngrok-free.app
+
 # 日誌設定
 logging:
   file: "/opt/vrops-alert-caller/logs/app.log"

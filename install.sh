@@ -119,10 +119,30 @@ collect_config() {
     read -r -p "重撥間隔秒數 [120]: " RETRY_INTERVAL
     RETRY_INTERVAL="${RETRY_INTERVAL:-120}"
 
+    # Twilio 設定（可選）
+    echo -e "\n${BLUE}--- Twilio 外撥設定（選填，若不使用請直接 Enter）---${NC}"
+    echo "  Twilio 可替代 SIP 撥號，適合無法取得 SIP Trunk 帳號的環境"
+    read -r -p "啟用 Twilio？[y/N]: " TWILIO_ENABLE_INPUT
+    if [[ "$TWILIO_ENABLE_INPUT" =~ ^[Yy]$ ]]; then
+        TWILIO_ENABLED="true"
+        read -r -p "Twilio Account SID: " TWILIO_ACCOUNT_SID
+        read -r -s -p "Twilio Auth Token: " TWILIO_AUTH_TOKEN; echo
+        read -r -p "Twilio 發話號碼（E.164，如 +886912345678）: " TWILIO_FROM
+        read -r -p "本服務公開 URL（如 https://your-server.com）: " TWILIO_BASE_URL
+        TWILIO_BASE_URL="${TWILIO_BASE_URL%/}"  # 移除尾部斜線
+    else
+        TWILIO_ENABLED="false"
+        TWILIO_ACCOUNT_SID="CHANGE_ME_ACCOUNT_SID"
+        TWILIO_AUTH_TOKEN="CHANGE_ME_AUTH_TOKEN"
+        TWILIO_FROM="+1XXXXXXXXXX"
+        TWILIO_BASE_URL="https://your-server.example.com"
+    fi
+
     # 確認設定
     echo -e "\n${CYAN}═══════ 設定確認 ═══════${NC}"
     echo "  SIP 伺服器:    $SIP_SERVER:$SIP_PORT"
     echo "  SIP 帳號:      $SIP_USER"
+    echo "  Twilio 啟用:   $TWILIO_ENABLED"
     echo "  Webhook Port:  $WEBHOOK_PORT"
     echo "  TTS 引擎:      $TTS_ENGINE"
     echo "  管理員帳號:    $ADMIN_USER"
@@ -174,6 +194,13 @@ webgui:
   secret_key: "$SECRET_KEY"
   users:
     $ADMIN_USER: "$ADMIN_PASS"
+
+twilio:
+  enabled: $TWILIO_ENABLED
+  account_sid: "$TWILIO_ACCOUNT_SID"
+  auth_token: "$TWILIO_AUTH_TOKEN"
+  from_number: "$TWILIO_FROM"
+  public_base_url: "$TWILIO_BASE_URL"
 
 logging:
   file: "$INSTALL_DIR/logs/app.log"
@@ -383,7 +410,8 @@ setup_venv() {
         "gtts>=2.5.0" \
         "pydub>=0.25.1" \
         "requests>=2.31.0" \
-        "pyttsx3>=2.90"
+        "pyttsx3>=2.90" \
+        "twilio>=8.0.0"
 
     # 驗證
     "$VENV_DIR/bin/python" -c "import flask, yaml, gtts, pydub; print('Python 套件 OK')"

@@ -9,9 +9,8 @@ import logging
 import sqlite3
 import threading
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import Callable, List, Dict, Optional
 from collections import OrderedDict
-
 from sip_caller import make_sip_call, CallResult, CallReport
 
 logger = logging.getLogger(__name__)
@@ -92,7 +91,9 @@ class AlertManager:
         wav_path: str,
         targets: List[Dict],
         alert_data: dict,
-        routed_group: str = ""
+        routed_group: str = "",
+        caller_func: Optional[Callable] = None,
+        caller_config: Optional[dict] = None
     ):
         """
         依優先序撥號，未接則重撥，重撥失敗則升級到下一個目標。
@@ -102,8 +103,18 @@ class AlertManager:
         2. 未接 → 等待 → 重撥（最多 max_retry 次）
         3. 仍未接 → 撥給 priority=2 的人
         4. 依此類推
+
+        Args:
+            caller_func:   撥號函式，簽章為 (wav_path, target_number, config) -> CallReport。
+                           預設使用 make_sip_call（SIP/pjsua2）。
+            caller_config: 傳入 caller_func 的 config 參數。
+                           預設使用 self.config["sip"]。
         """
-        sip_config = self.config["sip"]
+        if caller_func is None:
+            caller_func = make_sip_call
+        if caller_config is None:
+            caller_config = self.config["sip"]
+
         alert_key = (
             f"{alert_data.get('alertName', 'unknown')}_"
             f"{alert_data.get('resourceName', 'unknown')}"
@@ -124,10 +135,10 @@ class AlertManager:
                     f"{target_name} ({target_number})"
                 )
 
-                report = make_sip_call(
+                report = caller_func(
                     wav_path=wav_path,
                     target_number=target_number,
-                    config=sip_config
+                    config=caller_config
                 )
 
                 self._log_call(

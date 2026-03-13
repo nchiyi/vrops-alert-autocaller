@@ -17,7 +17,7 @@ import threading
 import atexit
 import functools
 from datetime import datetime
-from flask import Flask, request, jsonify, session, redirect, url_for, render_template
+from flask import Flask, request, jsonify, session, redirect, url_for, render_template, send_from_directory, Response
 import yaml
 
 # 讓 Python 能找到同層或父層模組
@@ -30,6 +30,14 @@ from alert_manager import AlertManager
 from routing_engine import resolve_targets
 from web.routes import gui
 from web.models import init_db
+
+# Twilio 模組（可選，需設定 twilio.enabled: true）
+try:
+    from twilio_caller import make_twilio_call
+    TWILIO_MODULE_AVAILABLE = True
+except ImportError:
+    make_twilio_call = None
+    TWILIO_MODULE_AVAILABLE = False
 
 # ============================
 # 載入設定
@@ -56,6 +64,20 @@ init_db()
 
 # 初始化告警管理器
 alert_mgr = AlertManager(CONFIG)
+
+# ============================
+# 撥號後端選擇（SIP / Twilio）
+# ============================
+
+_twilio_cfg = CONFIG.get("twilio", {})
+if _twilio_cfg.get("enabled", False) and TWILIO_MODULE_AVAILABLE:
+    _CALLER_FUNC = make_twilio_call
+    _CALLER_CONFIG = _twilio_cfg
+    _CALLER_BACKEND = "twilio"
+else:
+    _CALLER_FUNC = make_sip_call
+    _CALLER_CONFIG = CONFIG.get("sip", {})
+    _CALLER_BACKEND = "sip"
 
 # 設定日誌
 logging.basicConfig(
@@ -251,7 +273,9 @@ def process_alert(data: dict):
             wav_path=wav_path,
             targets=targets,
             alert_data=data,
-            routed_group=rule_name
+            routed_group=rule_name,
+            caller_func=_CALLER_FUNC,
+            caller_config=_CALLER_CONFIG
         )
 
     except Exception as e:
@@ -299,7 +323,9 @@ def process_batch_alert(batch: list):
             wav_path=wav_path,
             targets=targets,
             alert_data=batch_alert_data,
-            routed_group=rule_name
+            routed_group=rule_name,
+            caller_func=_CALLER_FUNC,
+            caller_config=_CALLER_CONFIG
         )
 
     except Exception as e:
@@ -347,6 +373,47 @@ def vrops_webhook():
 
 
 # ============================
+# Flask API — Twilio TwiML Webhook（不需登入，Twilio 回呼用）
+# ============================
+
+@app.route("/twiml/<audio_filename>", methods=["GET", "POST"])
+def twiml_webhook(audio_filename: str):
+    """
+    Twilio 接通後回呼此 URL，回傳 TwiML 播放指令。
+    audio_filename 為 TTS 產生的 WAV 檔名（如 alert_abc12345.wav）。
+    此端點刻意不加登入驗證，因為 Twilio 的伺服器需要能直接存取。
+    """
+    # 基本安全：只允許合法的音訊檔名（防止路徑遍歷）
+    safe_name = os.path.basename(audio_filename)
+    audio_url = f"{_twilio_cfg.get('public_base_url', '').rstrip('/')}/audio/{safe_name}"
+
+    twiml_response = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Play loop="2">{audio_url}</Play>
+  <Pause length="1"/>
+</Response>"""
+
+    logger.info(f"TwiML 回呼：{safe_name} → {audio_url}")
+    return Response(twiml_response, mimetype="application/xml")
+
+
+@app.route("/audio/<path:filename>", methods=["GET"])
+def serve_audio(filename: str):
+    """
+    供 Twilio 下載語音檔（WAV）。
+    路徑限制在 TTS output_dir 內，防止目錄遍歷。
+    此端點刻意不加登入驗證，因為 Twilio 的伺服器需要能直接存取。
+    """
+    audio_dir = CONFIG.get("tts", {}).get(
+        "output_dir", "/opt/vrops-alert-caller/audio"
+    )
+    safe_filename = os.path.basename(filename)   # 確保不含目錄分隔符
+
+    logger.debug(f"Twilio 下載語音：{safe_filename}")
+    return send_from_directory(audio_dir, safe_filename, mimetype="audio/wav")
+
+
+# ============================
 # Flask API — 健康檢查（不需登入）
 # ============================
 
@@ -360,6 +427,7 @@ def health():
     return jsonify({
         "status": "ok",
         "service": "vROps Alert AutoCaller",
+        "caller_backend": _CALLER_BACKEND,
         "sip_registered": sip_ready,
         "queue_size": alert_queue.qsize(),
         "consumer_alive": _consumer_thread.is_alive()

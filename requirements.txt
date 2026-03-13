@@ -6,4 +6,5 @@ gtts>=2.5.0
 pydub>=0.25.1
 requests>=2.31.0
 pyttsx3>=2.90
+twilio>=8.0.0
 # pjsua2 由 install.sh 從原始碼編譯，無法透過 pip 安裝
