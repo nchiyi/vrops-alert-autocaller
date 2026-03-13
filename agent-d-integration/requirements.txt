@@ -1,9 +1,0 @@
-flask>=3.0.0
-gunicorn>=21.2.0
-pyyaml>=6.0.1
-edge-tts>=6.1.10
-gtts>=2.5.0
-pydub>=0.25.1
-requests>=2.31.0
-pyttsx3>=2.90
-# pjsua2 須從原始碼編譯，見 02-中繼主機-環境建置.md

@@ -1,8 +1,0 @@
-# vROps Alert AutoCaller — Cron Jobs
-# 複製到 /etc/cron.d/vrops-cron
-
-# 每天凌晨 3 點清理 24 小時前的 TTS 語音暫存檔
-0 3 * * * vrops-alert /opt/vrops-alert-caller/venv/bin/python -c "from tts_engine import cleanup_old_audio; cleanup_old_audio('audio')" >> /opt/vrops-alert-caller/logs/cron.log 2>&1
-
-# 每 5 分鐘確認 service 仍然運行（Health Check）
-*/5 * * * * root curl -sf http://localhost:5000/health > /dev/null || systemctl restart vrops-alert-caller

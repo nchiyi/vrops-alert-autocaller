@@ -1,8 +1,0 @@
-flask==3.0.*
-gunicorn==22.*
-pyyaml==6.*
-gtts==2.*
-edge-tts==6.*
-pydub==0.25.*
-requests==2.*
-pyttsx3
