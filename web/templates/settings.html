@@ -437,7 +437,15 @@ async function sendTestCall() {
       body: JSON.stringify({ number: number, message: message || null })
     });
     if (res.status === 401) { window.location.href = '/login'; return; }
-    var data = await res.json();
+    var text = await res.text();
+    var data;
+    try { data = JSON.parse(text); } catch(_) {
+      // 伺服器回傳非 JSON（500 HTML），直接顯示 HTTP 狀態與原始訊息
+      setResultBox('test-call-result', false,
+        'HTTP ' + res.status + ' 伺服器錯誤\n' +
+        text.replace(/<[^>]+>/g, '').trim().slice(0, 300));
+      return;
+    }
     setResultBox('test-call-result', !!data.ok, data.message || '');
   } catch(e) {
     setResultBox('test-call-result', false, '撥號失敗：' + e.message);
