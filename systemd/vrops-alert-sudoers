@@ -1,0 +1,4 @@
+# vROps Alert Caller — 允許 vrops-alert 使用者修改設定檔擁有者
+# 安裝方式：sudo cp vrops-alert-sudoers /etc/sudoers.d/vrops-alert
+# 注意：gunicorn SIGHUP reload 不需要 sudo，此檔僅作為備用手動修復用
+vrops-alert ALL=(ALL) NOPASSWD: /bin/chown vrops-alert\:vrops-alert /opt/vrops-alert-caller/config/settings.yaml

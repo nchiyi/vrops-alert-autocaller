@@ -22,7 +22,6 @@
       <span class="backend-badge" id="badge-twilio">目前啟用</span>
     </div>
   </div>
-  <!-- 隱藏 checkbox，供 saveSettings() 讀取 -->
   <input type="checkbox" id="twilio-enabled" style="display:none;"
          {% if cfg.get('twilio',{}).get('enabled', False) %}checked{% endif %}>
 </div>
@@ -34,11 +33,9 @@
       <i class="fas fa-phone"></i> SIP 撥號設定（EZUC+）
       <span class="badge badge-success" id="sip-active-badge" style="margin-left:8px; vertical-align:middle; display:none;">啟用中</span>
     </h3>
-    <div style="display:flex; gap:8px;">
-      <button class="btn" id="btn-test-sip" onclick="testSip()" style="background:var(--bg-hover);">
-        <i class="fas fa-plug"></i> 測試連線
-      </button>
-    </div>
+    <button class="btn" id="btn-test-sip" onclick="testSip()" style="background:var(--bg-hover);">
+      <i class="fas fa-plug"></i> 測試連線
+    </button>
   </div>
 
   <div id="sip-test-result" style="display:none; margin-bottom:12px;"></div>
@@ -132,18 +129,33 @@
              placeholder="+886XXXXXXXXX">
     </div>
     <div class="form-group">
-      <label>本服務公開 URL</label>
-      <input id="twilio-base-url"
-             value="{{ cfg.get('twilio',{}).get('public_base_url','') | e }}"
-             placeholder="https://your-server.example.com">
-      <small style="color:var(--text-secondary);">Twilio 需能呼叫此 URL 下的 /twiml/ 和 /audio/</small>
+      <label>本服務公開 URL（Twilio 回呼用）</label>
+      <div style="display:flex; gap:8px;">
+        <input id="twilio-base-url"
+               value="{{ cfg.get('twilio',{}).get('public_base_url','') | e }}"
+               placeholder="https://your-server.example.com"
+               style="flex:1;">
+        <button class="btn" onclick="detectUrl()" style="background:var(--bg-hover); white-space:nowrap;">
+          <i class="fas fa-search-location"></i> 偵測
+        </button>
+      </div>
+      <small id="twilio-url-hint" style="color:var(--text-secondary);">
+        Twilio 需能從外部呼叫此 URL 下的 /twiml/ 和 /audio/，且必須是 HTTPS
+      </small>
     </div>
   </div>
 
-  <div class="notice-box notice-info">
+  <div class="notice-box notice-info" id="twilio-url-notice">
     <i class="fas fa-info-circle"></i>
-    <span>Twilio 需要 <strong>HTTPS</strong> 的 public_base_url。測試環境可用 ngrok：
-    <code>ngrok http 5000</code></span>
+    <div>
+      <strong>如何設定 public_base_url？</strong>
+      <ul style="margin-top:6px; padding-left:20px; line-height:1.8;">
+        <li><strong>正式環境</strong>：伺服器對外 IP 或網域，前面加 nginx + Let's Encrypt HTTPS<br>
+            例：<code>https://vrops.example.com</code></li>
+        <li><strong>測試環境</strong>：用 ngrok 穿透本機 → <code>ngrok http 5000</code><br>
+            取得的 <code>https://xxxx.ngrok.io</code> 填入此欄</li>
+      </ul>
+    </div>
   </div>
 </div>
 
@@ -173,18 +185,36 @@
   </div>
 </div>
 
-<!-- ── 儲存按鈕 + 重啟提示 ─────────────────── -->
+<!-- ── 測試撥號 ───────────────────────────────── -->
+<div class="card">
+  <h3 style="margin-bottom:16px;"><i class="fas fa-phone-volume"></i> 測試撥號</h3>
+  <div id="test-call-result" style="display:none; margin-bottom:12px;"></div>
+  <div style="display:flex; gap:12px; align-items:flex-end;">
+    <div class="form-group" style="flex:1; margin:0;">
+      <label>測試電話號碼（E.164 格式）</label>
+      <input id="test-call-number" placeholder="+886912345678" style="width:100%;">
+    </div>
+    <div class="form-group" style="flex:2; margin:0;">
+      <label>測試語音內容（留空使用預設）</label>
+      <input id="test-call-message" placeholder="這是 vROps Alert 系統的測試通話，語音撥號功能正常運作。">
+    </div>
+    <button class="btn btn-primary" id="btn-test-call" onclick="sendTestCall()"
+            style="white-space:nowrap; height:42px;">
+      <i class="fas fa-phone-alt"></i> 發送測試語音
+    </button>
+  </div>
+  <div class="notice-box notice-warning" style="margin-top:12px;">
+    <i class="fas fa-exclamation-triangle"></i>
+    <span>測試撥號會實際撥打電話並產生費用（SIP 分鐘數 / Twilio 通話費）。撥號可能需要 10～30 秒才會接通。</span>
+  </div>
+</div>
+
+<!-- ── 儲存按鈕 ──────────────────────────────── -->
 <div style="display:flex; justify-content:flex-end; align-items:center; gap:16px; margin-top:8px;">
   <span id="save-status" style="color:var(--text-secondary); font-size:0.9em;"></span>
   <button class="btn btn-primary" onclick="saveSettings()" style="padding:10px 32px;">
     <i class="fas fa-save"></i> 儲存設定
   </button>
-</div>
-
-<div class="notice-box notice-warning" style="margin-top:16px;">
-  <i class="fas fa-redo"></i>
-  <span>儲存設定後需重啟服務才能生效：
-  <code>sudo systemctl restart vrops-alert-caller</code></span>
 </div>
 
 {% endblock %}
@@ -198,23 +228,17 @@ selectBackend(_currentBackend, true);
 // ── 切換外撥後端 ──────────────────────────────
 function selectBackend(backend, init) {
   _currentBackend = backend;
-
-  // 同步隱藏 checkbox
   document.getElementById('twilio-enabled').checked = (backend === 'twilio');
 
-  // 選項卡片樣式
   document.getElementById('opt-sip').classList.toggle('active', backend === 'sip');
   document.getElementById('opt-twilio').classList.toggle('active', backend === 'twilio');
 
-  // 啟用/停用徽章
-  document.getElementById('badge-sip').style.display   = backend === 'sip'    ? '' : 'none';
+  document.getElementById('badge-sip').style.display    = backend === 'sip'    ? '' : 'none';
   document.getElementById('badge-twilio').style.display = backend === 'twilio' ? '' : 'none';
 
-  // 卡片標頭徽章
   document.getElementById('sip-active-badge').style.display    = backend === 'sip'    ? '' : 'none';
-  document.getElementById('twilio-active-badge').style.display  = backend === 'twilio' ? '' : 'none';
+  document.getElementById('twilio-active-badge').style.display = backend === 'twilio' ? '' : 'none';
 
-  // 停用中的卡片變暗（仍可瀏覽，但視覺區分）
   document.getElementById('card-sip').classList.toggle('section-inactive', backend === 'twilio');
   document.getElementById('card-twilio').classList.toggle('section-inactive', backend === 'sip');
 
@@ -247,7 +271,7 @@ function genWebhookToken() {
   document.getElementById('eye-webhook-auth-token').classList.replace('fa-eye','fa-eye-slash');
 }
 
-// ── 設定測試結果方塊 (純 DOM，不使用 innerHTML) ──
+// ── 設定測試結果方塊 ──────────────────────────
 function setResultBox(boxId, ok, message) {
   var box = document.getElementById(boxId);
   box.style.display = 'block';
@@ -268,7 +292,7 @@ function setResultBox(boxId, ok, message) {
   });
 }
 
-// ── 取得設定值（密碼為空字串時傳遮罩讓後端保留原值）─
+// ── 取得設定值（密碼留空時送遮罩保留原值）───────
 function getFieldValue(id, isSensitive) {
   var val = document.getElementById(id).value.trim();
   if (isSensitive && val === '') return '\u25cf\u25cf\u25cf\u25cf\u25cf\u25cf\u25cf\u25cf';
@@ -311,12 +335,15 @@ async function saveSettings() {
     var data = await res.json();
     if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
 
-    status.textContent = '✓ 已儲存 — 請重啟服務生效';
-    status.style.color = '#27ae60';
-    showToast(data.message || '設定已儲存');
+    status.textContent = '✓ 已儲存，服務重載中...';
+    status.style.color = 'var(--success)';
+    showToast(data.message || '設定已儲存，服務 2 秒後自動重載');
+
+    // 3 秒後重新整理頁面（等 gunicorn reload 完成）
+    setTimeout(function() { window.location.reload(); }, 4000);
   } catch(e) {
-    status.textContent = '✗ 儲存失敗';
-    status.style.color = '#e74c3c';
+    status.textContent = '✗ 儲存失敗：' + e.message;
+    status.style.color = 'var(--danger)';
     showToast('儲存失敗：' + e.message, true);
   }
 }
@@ -326,7 +353,6 @@ async function testSip() {
   var btn = document.getElementById('btn-test-sip');
   btn.disabled = true;
   btn.textContent = '測試中...';
-
   try {
     var res = await fetch('/api/test-sip', { method: 'POST' });
     if (res.status === 401) { window.location.href = '/login'; return; }
@@ -349,10 +375,8 @@ async function testTwilio() {
   var btn = document.getElementById('btn-test-twilio');
   btn.disabled = true;
   btn.textContent = '驗證中...';
-
   var account_sid = document.getElementById('twilio-account-sid').value.trim();
   var auth_token  = getFieldValue('twilio-auth-token', true);
-
   try {
     var res = await fetch('/api/test-twilio', {
       method: 'POST',
@@ -371,6 +395,59 @@ async function testTwilio() {
     icon.className = 'fas fa-check-circle';
     btn.appendChild(icon);
     btn.appendChild(document.createTextNode(' 驗證帳號'));
+  }
+}
+
+// ── 偵測 Twilio public URL ────────────────────
+async function detectUrl() {
+  try {
+    var res = await fetch('/api/detect-url');
+    var data = await res.json();
+    document.getElementById('twilio-base-url').value = data.url;
+    var hint = document.getElementById('twilio-url-hint');
+    if (data.warning) {
+      hint.style.color = 'var(--warning)';
+      hint.textContent = '⚠ ' + data.warning;
+    } else {
+      hint.style.color = 'var(--success)';
+      hint.textContent = '✓ 偵測到 HTTPS URL，可直接使用';
+    }
+  } catch(e) {
+    showToast('偵測失敗：' + e.message, true);
+  }
+}
+
+// ── 發送測試語音電話 ──────────────────────────
+async function sendTestCall() {
+  var number = document.getElementById('test-call-number').value.trim();
+  if (!number) {
+    showToast('請輸入測試電話號碼', true);
+    return;
+  }
+  var message = document.getElementById('test-call-message').value.trim();
+  var btn = document.getElementById('btn-test-call');
+  btn.disabled = true;
+  btn.textContent = '撥號中...';
+  setResultBox('test-call-result', true, '正在合成語音並撥號，請稍候（10～30 秒）...');
+
+  try {
+    var res = await fetch('/api/test-call', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ number: number, message: message || null })
+    });
+    if (res.status === 401) { window.location.href = '/login'; return; }
+    var data = await res.json();
+    setResultBox('test-call-result', !!data.ok, data.message || '');
+  } catch(e) {
+    setResultBox('test-call-result', false, '撥號失敗：' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '';
+    var icon = document.createElement('i');
+    icon.className = 'fas fa-phone-alt';
+    btn.appendChild(icon);
+    btn.appendChild(document.createTextNode(' 發送測試語音'));
   }
 }
 </script>

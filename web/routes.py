@@ -1,18 +1,23 @@
 #!/usr/bin/env python3
 """
 routes.py — WebGUI 路由 + REST API
-[v3 修正] 所有頁面和 API 都需要登入驗證
+[v4] 儲存後自動重載服務、新增測試撥號 API、Twilio URL 偵測
 """
 
 import os
 import copy
+import signal
+import threading
 import functools
+import logging
 import yaml
 from flask import (
     Blueprint, render_template, request,
     jsonify, redirect, session
 )
 from web import models
+
+logger = logging.getLogger(__name__)
 
 # 設定檔路徑（web/ 的上一層目錄）
 _here = os.path.dirname(os.path.abspath(__file__))
@@ -45,7 +50,13 @@ def _read_yaml() -> dict:
 
 
 def _write_yaml(cfg: dict):
-    """將 dict 寫回 settings.yaml（保留既有格式盡量不破壞）"""
+    """將 dict 寫回 settings.yaml"""
+    # 先確認寫入權限
+    if not os.access(SETTINGS_PATH, os.W_OK):
+        raise PermissionError(
+            f"無寫入權限：{SETTINGS_PATH}\n"
+            f"請在伺服器執行：sudo chown vrops-alert:vrops-alert {SETTINGS_PATH}"
+        )
     with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
         yaml.dump(cfg, f, allow_unicode=True, default_flow_style=False,
                   sort_keys=False)
@@ -102,8 +113,28 @@ def _merge_settings(original: dict, updates: dict) -> dict:
     return result
 
 
-# [v3] login_required 裝飾器（在 Blueprint 中獨立定義，
-# 避免與 webhook_server.py 的 circular import）
+def _deferred_reload(delay: float = 2.0):
+    """
+    延遲後對 gunicorn master 送 SIGHUP，觸發 graceful worker reload。
+    讓 HTTP response 先送出後再重載，不需要 sudo。
+    """
+    def _do():
+        import time
+        time.sleep(delay)
+        try:
+            master_pid = os.getppid()   # gunicorn worker → ppid = master
+            os.kill(master_pid, signal.SIGHUP)
+            logger.info(f"已對 gunicorn master (pid={master_pid}) 送出 SIGHUP，服務重載中")
+        except Exception as e:
+            logger.warning(f"自動重載失敗：{e}")
+
+    threading.Thread(target=_do, daemon=True).start()
+
+
+# ============================
+# login_required 裝飾器
+# ============================
+
 def login_required(f):
     """WebGUI 頁面/API 需登入"""
     @functools.wraps(f)
@@ -318,16 +349,20 @@ def api_settings_get():
 @gui.route("/api/settings", methods=["PUT"])
 @login_required
 def api_settings_put():
-    """儲存設定（遮罩值保留原始密碼，不更新）"""
+    """儲存設定並自動重載服務（SIGHUP to gunicorn master）"""
     updates = request.get_json(silent=True) or {}
     original = _read_yaml()
     merged = _merge_settings(original, updates)
     try:
         _write_yaml(merged)
+        # 2 秒後對 gunicorn master 送 SIGHUP，讓 response 先送出
+        _deferred_reload(delay=2.0)
         return jsonify({
             "status": "saved",
-            "message": "設定已儲存，請重啟服務讓變更生效。"
+            "message": "設定已儲存，服務將在 2 秒後自動重載。"
         })
+    except PermissionError as e:
+        return jsonify({"error": str(e)}), 403
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -339,7 +374,7 @@ def api_settings_put():
 @gui.route("/api/test-sip", methods=["POST"])
 @login_required
 def api_test_sip():
-    """檢查 SIP 目前連線狀態（需重啟後才能反映新設定）"""
+    """檢查 SIP 目前連線狀態"""
     try:
         from sip_caller import SipEngine
         ready = (
@@ -364,7 +399,6 @@ def api_test_twilio():
     account_sid = data.get("account_sid", "")
     auth_token = data.get("auth_token", "")
 
-    # 若前端傳回遮罩值，從 settings.yaml 讀取原始值
     cfg = _read_yaml()
     twilio_cfg = cfg.get("twilio", {})
     if auth_token == _MASK:
@@ -387,3 +421,92 @@ def api_test_twilio():
         return jsonify({"ok": False, "message": "twilio 套件未安裝，請執行：pip install twilio"}), 500
     except Exception as e:
         return jsonify({"ok": False, "message": f"驗證失敗：{e}"}), 400
+
+
+@gui.route("/api/detect-url", methods=["GET"])
+@login_required
+def api_detect_url():
+    """回傳伺服器目前可見的 base URL（供 Twilio public_base_url 參考）"""
+    # 優先讀 X-Forwarded-Proto / X-Forwarded-Host（nginx proxy 場景）
+    proto = request.headers.get("X-Forwarded-Proto", request.scheme)
+    host = request.headers.get("X-Forwarded-Host", request.host)
+    url = f"{proto}://{host}"
+    is_https = proto == "https"
+    return jsonify({
+        "url": url,
+        "is_https": is_https,
+        "warning": None if is_https else "目前為 HTTP，Twilio 要求公開 URL 必須是 HTTPS。測試可用 ngrok。"
+    })
+
+
+# ============================
+# REST API — 測試撥號
+# ============================
+
+@gui.route("/api/test-call", methods=["POST"])
+@login_required
+def api_test_call():
+    """
+    發送測試語音電話。
+    Body: { "number": "+886912345678", "message": "自訂測試語音（選填）" }
+    """
+    data = request.get_json(silent=True) or {}
+    number = data.get("number", "").strip()
+    if not number:
+        return jsonify({"ok": False, "message": "請輸入要撥打的電話號碼"}), 400
+
+    cfg = _read_yaml()
+    tts_cfg = cfg.get("tts", {})
+    test_text = data.get("message", "") or "這是 vROps Alert 系統的測試通話，語音撥號功能正常運作，請放心。"
+
+    # 合成測試語音
+    try:
+        from tts_engine import synthesize_speech
+        wav_path = synthesize_speech(test_text, tts_cfg)
+    except Exception as e:
+        return jsonify({"ok": False, "message": f"語音合成失敗：{e}"}), 500
+
+    # 依設定選擇後端撥號
+    twilio_cfg = cfg.get("twilio", {})
+    if twilio_cfg.get("enabled", False):
+        try:
+            from twilio_caller import make_twilio_call
+            report = make_twilio_call(
+                wav_path=wav_path,
+                target_number=number,
+                config=twilio_cfg
+            )
+        except ImportError:
+            return jsonify({"ok": False, "message": "twilio 套件未安裝"}), 500
+        except Exception as e:
+            return jsonify({"ok": False, "message": f"Twilio 撥號失敗：{e}"}), 500
+        backend = "Twilio"
+    else:
+        try:
+            from sip_caller import make_sip_call
+            sip_cfg = cfg.get("sip", {})
+            report = make_sip_call(
+                wav_path=wav_path,
+                target_number=number,
+                config=sip_cfg
+            )
+        except Exception as e:
+            return jsonify({"ok": False, "message": f"SIP 撥號失敗：{e}"}), 500
+        backend = "SIP"
+
+    ok = getattr(report, "result", "") in ("answered", "completed", "no-answer")
+    err = getattr(report, "error_message", "") or ""
+    duration = getattr(report, "duration_seconds", 0) or 0
+
+    msg_parts = [f"[{backend}] 通話結果：{report.result}，號碼：{report.target}"]
+    if duration:
+        msg_parts.append(f"通話時長：{duration}s")
+    if err and not ok:
+        msg_parts.append(f"錯誤：{err}")
+
+    return jsonify({
+        "ok": ok,
+        "message": "\n".join(msg_parts),
+        "result": report.result,
+        "backend": backend
+    })
