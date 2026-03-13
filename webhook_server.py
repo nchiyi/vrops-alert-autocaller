@@ -43,7 +43,10 @@ with open(CONFIG_PATH, "r", encoding="utf-8") as f:
 # Flask App 初始化
 # ============================
 
-app = Flask(__name__, template_folder=os.path.join(BASE_DIR, "web", "templates"))
+app = Flask(__name__,
+            template_folder=os.path.join(BASE_DIR, "web", "templates"),
+            static_folder=os.path.join(BASE_DIR, "web", "static"),
+            static_url_path="/static")
 app.secret_key = CONFIG.get("webgui", {}).get(
     "secret_key", os.urandom(24).hex()
 )
