@@ -270,12 +270,24 @@ install_pjsua2() {
     ldconfig
 
     log_info "編譯 Python binding..."
-    cd pjsip-apps/src/swig/python
-    make
-    make install
+    cd "$PJPROJECT_DIR/pjsip-apps/src/swig/python"
+    python3 setup.py build 2>&1 | tail -5
+    python3 setup.py install 2>&1 | tail -5
     ldconfig
 
-    # 驗證
+    # setup.py install 有時不會更新 ldconfig，手動複製 .so 確保可見
+    SO_FILE=$(find "$PJPROJECT_DIR" -name "_pjsua2*.so" 2>/dev/null | head -1)
+    if [[ -n "$SO_FILE" ]]; then
+        SYSPY_SITE=$(python3 -c "import site; print(site.getsitepackages()[0])" 2>/dev/null)
+        if [[ -n "$SYSPY_SITE" ]]; then
+            cp "$SO_FILE" "$SYSPY_SITE/" && log_info "手動複製 _pjsua2.so → $SYSPY_SITE"
+            cp "$PJPROJECT_DIR/pjsip-apps/src/swig/python/pjsua2.py" "$SYSPY_SITE/"
+        fi
+    fi
+    ldconfig
+
+    # 驗證（cd ~ 避免抓到本地 pjsua2.py）
+    cd ~
     if python3 -c "import pjsua2; print('pjsua2 OK')"; then
         log_info "pjsua2 安裝驗證通過"
     else
