@@ -6,6 +6,7 @@
 #   bash install.sh              # 互動式安裝（systemd）
 #   bash install.sh --docker     # Docker Compose 安裝
 #   bash install.sh --uninstall  # 移除服務
+#   bash install.sh --update     # 從 GitHub 拉取最新程式碼並重啟
 # =============================================================
 set -euo pipefail
 
@@ -17,6 +18,7 @@ SERVICE_USER="vrops-alert"
 SERVICE_NAME="vrops-alert-caller"
 VENV_DIR="$INSTALL_DIR/venv"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_URL="https://github.com/nchiyi/vrops-alert-autocaller.git"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 BLUE='\033[0;34m'; CYAN='\033[0;36m'; NC='\033[0m'
@@ -310,19 +312,32 @@ setup_directories() {
         log_info "服務帳號 $SERVICE_USER 已存在"
     fi
 
-    # 建立目錄
-    mkdir -p "$INSTALL_DIR"/{config,logs,audio,web}
+    # 從 GitHub clone（或若已存在則 pull 更新）
+    if [[ -d "$INSTALL_DIR/.git" ]]; then
+        log_info "偵測到既有 git repo，執行 git pull..."
+        git -C "$INSTALL_DIR" pull origin main
+    else
+        log_info "從 GitHub clone 程式碼..."
+        # 若目錄已存在但不是 git repo（舊版 cp 安裝），先備份 config
+        if [[ -d "$INSTALL_DIR" ]]; then
+            if [[ -f "$INSTALL_DIR/config/settings.yaml" ]]; then
+                cp "$INSTALL_DIR/config/settings.yaml" /tmp/vrops-settings.yaml.bak
+                log_info "設定檔已備份至 /tmp/vrops-settings.yaml.bak"
+            fi
+            rm -rf "$INSTALL_DIR"
+        fi
+        git clone --depth 1 "$REPO_URL" "$INSTALL_DIR"
+    fi
 
-    # 複製應用程式檔案
-    log_info "複製應用程式..."
-    cp -f "$SCRIPT_DIR/webhook_server.py" "$INSTALL_DIR/"
-    cp -f "$SCRIPT_DIR/tts_engine.py"     "$INSTALL_DIR/"
-    cp -f "$SCRIPT_DIR/sip_caller.py"     "$INSTALL_DIR/"
-    cp -f "$SCRIPT_DIR/alert_manager.py"  "$INSTALL_DIR/"
-    cp -f "$SCRIPT_DIR/routing_engine.py" "$INSTALL_DIR/"
+    # 建立不在 git repo 中的資料目錄
+    mkdir -p "$INSTALL_DIR"/{logs,audio}
 
-    # 複製 web 目錄
-    cp -rf "$SCRIPT_DIR/web/"      "$INSTALL_DIR/"
+    # 還原備份的設定檔（若有）
+    if [[ -f /tmp/vrops-settings.yaml.bak && ! -f "$INSTALL_DIR/config/settings.yaml" ]]; then
+        mkdir -p "$INSTALL_DIR/config"
+        cp /tmp/vrops-settings.yaml.bak "$INSTALL_DIR/config/settings.yaml"
+        log_info "已還原備份的設定檔"
+    fi
 
     # 設定權限
     chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
@@ -609,6 +624,7 @@ main() {
         case "$arg" in
             --docker)     MODE="docker" ;;
             --uninstall)  MODE="uninstall" ;;
+            --update)     MODE="update" ;;
         esac
     done
 
@@ -619,6 +635,20 @@ main() {
         uninstall)
             check_root
             uninstall
+            ;;
+        update)
+            check_root
+            log_section "從 GitHub 更新程式碼"
+            if [[ ! -d "$INSTALL_DIR/.git" ]]; then
+                log_error "$INSTALL_DIR 不是 git repo，請先完整安裝後再使用 --update"
+                exit 1
+            fi
+            # 保留 settings.yaml 不被覆蓋
+            git -C "$INSTALL_DIR" pull origin main
+            chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
+            systemctl restart "$SERVICE_NAME"
+            log_info "更新完成，服務已重啟"
+            systemctl status "$SERVICE_NAME" --no-pager | head -5
             ;;
         systemd)
             check_root

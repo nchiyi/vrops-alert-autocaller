@@ -4,5 +4,8 @@ __pycache__/
 *.log
 *.db
 audio/
+logs/
 venv/
 .env
+# 部署後的設定檔含密碼，不納入 git
+config/settings.yaml
