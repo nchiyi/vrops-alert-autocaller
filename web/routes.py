@@ -4,6 +4,7 @@ routes.py — WebGUI 路由 + REST API
 [v3 修正] 所有頁面和 API 都需要登入驗證
 """
 
+import os
 import functools
 from flask import (
     Blueprint, render_template, request,
@@ -11,9 +12,12 @@ from flask import (
 )
 from web import models
 
+_here = os.path.dirname(os.path.abspath(__file__))
+
 gui = Blueprint("gui", __name__,
-                template_folder="templates",
-                static_folder="static")
+                template_folder=os.path.join(_here, "templates"),
+                static_folder=os.path.join(_here, "static"),
+                static_url_path="/static")
 
 
 # [v3] login_required 裝飾器（在 Blueprint 中獨立定義，
