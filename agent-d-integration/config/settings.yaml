@@ -1,0 +1,47 @@
+# =============================================================
+# vROps Alert AutoCaller — 統整設定檔 (settings.yaml)
+# Agent D 整合版
+# =============================================================
+
+# Webhook 接收設定
+webhook:
+  host: "0.0.0.0"
+  port: 5000
+  auth_token: "YOUR_WEBHOOK_SECRET"    # 請修改為隨機字串或設 null 停用驗證
+
+# TTS 語音合成設定
+tts:
+  engine: "edge-tts"                   # edge-tts | gtts
+  voice: "zh-TW-HsiaoChenNeural"       # 台灣女聲（推薦）
+  output_dir: "/opt/vrops-alert-caller/audio"
+  fallback_wav: "/opt/vrops-alert-caller/audio/fallback_alert.wav"
+
+# SIP 撥號設定（EZUC+）
+sip:
+  server: "clouduc.e-usi.com"
+  port: 5061
+  transport: "tls"
+  username: "YOUR_SIP_USER"            # 請填入 EZUC+ SIP 帳號
+  password: "YOUR_SIP_PASS"            # 請填入 EZUC+ SIP 密碼
+
+# 告警處理設定
+alert:
+  dedup_window_seconds: 300            # 5 分鐘內同一告警不重複撥號
+  max_retry: 3                         # 未接時最多重撥次數
+  retry_interval_seconds: 120          # 重撥間隔秒數
+  escalation: true                     # 全部重撥失敗後升級到下一位
+  queue_ttl_seconds: 600               # 告警在 Queue 中存活最大秒數
+  batch_threshold: 3                   # Queue 積壓超過此數觸發風暴合併
+
+# WebGUI 管理介面設定
+webgui:
+  secret_key: "CHANGE_ME_RANDOM_KEY"  # 請換成隨機字串（用於 Session 加密）
+  users:
+    admin: "CHANGE_ME"                 # WebGUI 管理員密碼 → 務必修改!
+    # operator: "Op3rator!"            # 可新增更多帳號
+
+# 日誌設定
+logging:
+  file: "/opt/vrops-alert-caller/logs/app.log"
+  level: "INFO"                        # DEBUG | INFO | WARNING | ERROR
+  db_path: "/opt/vrops-alert-caller/logs/alerts.db"

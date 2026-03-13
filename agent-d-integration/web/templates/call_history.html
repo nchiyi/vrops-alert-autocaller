@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}通話紀錄 — vROps Alert Manager{% endblock %}
+{% block page_title %}通話紀錄{% endblock %}
+
+{% block body %}
+<div class="card">
+    <h3><i class="fas fa-filter"></i> 篩選條件</h3>
+    <form method="GET" style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+        <div class="form-group" style="flex:1; min-width:150px; margin:0;">
+            <label>告警名稱</label>
+            <input name="alert_name" value="{{ filters.alert_name }}" placeholder="模糊搜尋">
+        </div>
+        <div class="form-group" style="flex:1; min-width:150px; margin:0;">
+            <label>主機名稱</label>
+            <input name="resource_name" value="{{ filters.resource_name }}" placeholder="模糊搜尋">
+        </div>
+        <div class="form-group" style="flex:1; min-width:120px; margin:0;">
+            <label>結果</label>
+            <select name="result">
+                <option value="">全部</option>
+                <option value="success" {% if filters.result=='success' %}selected{% endif %}>成功</option>
+                <option value="no_answer" {% if filters.result=='no_answer' %}selected{% endif %}>未接</option>
+                <option value="busy" {% if filters.result=='busy' %}selected{% endif %}>忙線</option>
+                <option value="failed" {% if filters.result=='failed' %}selected{% endif %}>失敗</option>
+                <option value="timeout" {% if filters.result=='timeout' %}selected{% endif %}>超時</option>
+            </select>
+        </div>
+        <div class="form-group" style="flex:1; min-width:140px; margin:0;">
+            <label>起始日期</label>
+            <input type="date" name="date_from" value="{{ filters.date_from }}">
+        </div>
+        <div class="form-group" style="flex:1; min-width:140px; margin:0;">
+            <label>結束日期</label>
+            <input type="date" name="date_to" value="{{ filters.date_to }}">
+        </div>
+        <button type="submit" class="btn btn-primary">搜尋</button>
+        <a href="/history" class="btn" style="background:var(--bg-hover);">重設</a>
+    </form>
+</div>
+
+<div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <h3><i class="fas fa-history"></i> 通話紀錄</h3>
+        <span style="color:var(--text-secondary);">共 {{ data.total }} 筆</span>
+    </div>
+
+    {% if data.records %}
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>時間</th>
+                <th>告警名稱</th>
+                <th>主機</th>
+                <th>嚴重度</th>
+                <th>撥號對象</th>
+                <th>號碼</th>
+                <th>嘗試次</th>
+                <th>結果</th>
+                <th>耗時(s)</th>
+                <th>路由規則</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in data.records %}
+            <tr>
+                <td>{{ r.id }}</td>
+                <td>{{ r.timestamp[:19] }}</td>
+                <td>{{ r.alert_name or '-' }}</td>
+                <td>{{ r.resource_name or '-' }}</td>
+                <td>
+                    {% if r.criticality == 'CRITICAL' %}
+                    <span class="badge badge-danger">緊急</span>
+                    {% elif r.criticality == 'WARNING' %}
+                    <span class="badge badge-warning">警告</span>
+                    {% else %}
+                    {{ r.criticality or '-' }}
+                    {% endif %}
+                </td>
+                <td>{{ r.target_name }}</td>
+                <td>{{ r.target_number }}</td>
+                <td>{{ r.attempt }}</td>
+                <td>
+                    {% if r.result == 'success' %}
+                    <span class="badge badge-success">成功</span>
+                    {% elif r.result == 'no_answer' %}
+                    <span class="badge badge-warning">未接</span>
+                    {% elif r.result == 'busy' %}
+                    <span class="badge badge-warning">忙線</span>
+                    {% else %}
+                    <span class="badge badge-danger">{{ r.result }}</span>
+                    {% endif %}
+                </td>
+                <td>{{ "%.1f"|format(r.duration_seconds or 0) }}</td>
+                <td>{{ r.routed_group or '預設' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- 分頁 -->
+    <div style="display:flex; justify-content:center; gap:8px; margin-top:20px;">
+        {% if page > 1 %}
+        <a href="?page={{ page-1 }}&{{ request.query_string.decode() }}" class="btn" style="background:var(--bg-hover);">上一頁</a>
+        {% endif %}
+        <span style="padding:8px 16px; color:var(--text-secondary);">第 {{ page }} 頁</span>
+        {% if data.offset + per_page < data.total %}
+        <a href="?page={{ page+1 }}&{{ request.query_string.decode() }}" class="btn" style="background:var(--bg-hover);">下一頁</a>
+        {% endif %}
+    </div>
+    {% else %}
+    <p style="color:var(--text-secondary); text-align:center; padding:32px;">無符合條件的通話紀錄</p>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}vROps Alert Manager{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('gui.static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <nav class="sidebar">
+        <div class="logo">
+            <i class="fas fa-bell"></i>
+            <span>vROps Alert</span>
+        </div>
+        <ul>
+            <li class="{% if request.path == '/' %}active{% endif %}">
+                <a href="/"><i class="fas fa-chart-line"></i> Dashboard</a>
+            </li>
+            <li class="{% if '/contacts' in request.path %}active{% endif %}">
+                <a href="/contacts"><i class="fas fa-address-book"></i> 聯絡人</a>
+            </li>
+            <li class="{% if '/history' in request.path %}active{% endif %}">
+                <a href="/history"><i class="fas fa-history"></i> 通話紀錄</a>
+            </li>
+            <li class="{% if '/routing' in request.path %}active{% endif %}">
+                <a href="/routing"><i class="fas fa-route"></i> 告警路由</a>
+            </li>
+        </ul>
+        <div class="sidebar-footer">
+            <div class="status-indicator" id="sip-status">
+                <span class="dot"></span> SIP 狀態檢查中...
+            </div>
+            <a href="/logout" class="logout-link"><i class="fas fa-sign-out-alt"></i> 登出</a>
+        </div>
+    </nav>
+
+    <main class="content">
+        <header>
+            <h1>{% block page_title %}{% endblock %}</h1>
+        </header>
+        {% block body %}{% endblock %}
+    </main>
+
+    <script src="{{ url_for('gui.static', filename='js/app.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
