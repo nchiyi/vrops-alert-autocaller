@@ -508,11 +508,15 @@ def api_test_call():
             return jsonify({"ok": False, "message": f"SIP 撥號失敗：{e}"}), 500
         backend = "SIP"
 
-    ok = getattr(report, "result", "") in ("answered", "completed", "no-answer")
+    # CallResult 是 Enum，取 .value 轉成字串才能 JSON 序列化
+    raw_result = getattr(report, "result", "")
+    result_str = raw_result.value if hasattr(raw_result, "value") else str(raw_result)
+
+    ok = result_str in ("answered", "completed", "no-answer", "success")
     err = getattr(report, "error_message", "") or ""
     duration = getattr(report, "duration_seconds", 0) or 0
 
-    msg_parts = [f"[{backend}] 通話結果：{report.result}，號碼：{report.target}"]
+    msg_parts = [f"[{backend}] 通話結果：{result_str}，號碼：{report.target}"]
     if duration:
         msg_parts.append(f"通話時長：{duration}s")
     if err and not ok:
@@ -521,6 +525,6 @@ def api_test_call():
     return jsonify({
         "ok": ok,
         "message": "\n".join(msg_parts),
-        "result": report.result,
+        "result": result_str,
         "backend": backend
     })
