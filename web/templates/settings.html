@@ -1,0 +1,342 @@
+{% extends "base.html" %}
+
+{% block title %}系統設定 — vROps Alert Manager{% endblock %}
+{% block page_title %}系統設定{% endblock %}
+
+{% block body %}
+
+<!-- ── SIP 設定 ──────────────────────────────── -->
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <h3><i class="fas fa-phone"></i> SIP 撥號設定（EZUC+）</h3>
+    <div style="display:flex; gap:8px;">
+      <button class="btn" id="btn-test-sip" onclick="testSip()" style="background:var(--bg-hover);">
+        <i class="fas fa-plug"></i> 測試連線
+      </button>
+      <button class="btn btn-primary" onclick="saveSettings()">
+        <i class="fas fa-save"></i> 儲存所有設定
+      </button>
+    </div>
+  </div>
+
+  <div id="sip-test-result" style="display:none; margin-bottom:12px;"></div>
+
+  <div class="settings-grid">
+    <div class="form-group">
+      <label>SIP 伺服器</label>
+      <input id="sip-server" value="{{ cfg.get('sip',{}).get('server','') | e }}"
+             placeholder="clouduc.e-usi.com">
+    </div>
+    <div class="form-group">
+      <label>SIP Port</label>
+      <input id="sip-port" type="number" value="{{ cfg.get('sip',{}).get('port', 5061) }}"
+             placeholder="5061">
+    </div>
+    <div class="form-group">
+      <label>傳輸協定</label>
+      <select id="sip-transport">
+        <option value="tls" {% if cfg.get('sip',{}).get('transport','tls')=='tls' %}selected{% endif %}>TLS（推薦）</option>
+        <option value="udp" {% if cfg.get('sip',{}).get('transport','')=='udp' %}selected{% endif %}>UDP</option>
+        <option value="tcp" {% if cfg.get('sip',{}).get('transport','')=='tcp' %}selected{% endif %}>TCP</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>SIP 帳號（Username）</label>
+      <input id="sip-username" value="{{ cfg.get('sip',{}).get('username','') | e }}"
+             placeholder="SIP Trunk 帳號">
+    </div>
+    <div class="form-group">
+      <label>SIP 密碼</label>
+      <div style="position:relative;">
+        <input id="sip-password" type="password"
+               value="{{ cfg.get('sip',{}).get('password','') | e }}"
+               placeholder="（不修改請留空）"
+               autocomplete="new-password">
+        <button type="button" onclick="togglePwd('sip-password')"
+                style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-secondary);cursor:pointer;">
+          <i class="fas fa-eye" id="eye-sip-password"></i>
+        </button>
+      </div>
+      <small style="color:var(--text-secondary);">留空表示不修改目前密碼</small>
+    </div>
+  </div>
+
+  <div class="notice-box notice-warning">
+    <i class="fas fa-exclamation-triangle"></i>
+    <span>EZUC+ 一般 App 帳號（格式：帳號.分機.mobile）會收到 <strong>403 Forbidden</strong>。
+    自動撥號需向 eASPNet 申請 <strong>SIP Trunk 帳號</strong>。</span>
+  </div>
+</div>
+
+<!-- ── Twilio 設定 ────────────────────────────── -->
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <h3><i class="fas fa-cloud"></i> Twilio 外撥設定</h3>
+    <button class="btn" id="btn-test-twilio" onclick="testTwilio()" style="background:var(--bg-hover);">
+      <i class="fas fa-check-circle"></i> 驗證帳號
+    </button>
+  </div>
+
+  <div id="twilio-test-result" style="display:none; margin-bottom:12px;"></div>
+
+  <div class="settings-grid" style="margin-bottom:16px;">
+    <div class="form-group" style="grid-column:1/-1; display:flex; align-items:center; gap:12px;">
+      <label style="margin:0; white-space:nowrap;">啟用 Twilio 作為外撥後端</label>
+      <label class="toggle-switch">
+        <input type="checkbox" id="twilio-enabled"
+               {% if cfg.get('twilio',{}).get('enabled', False) %}checked{% endif %}>
+        <span class="slider"></span>
+      </label>
+      <span id="twilio-enabled-label" style="color:var(--text-secondary); font-size:0.9em;">
+        {% if cfg.get('twilio',{}).get('enabled', False) %}
+          使用 Twilio（已停用 SIP）
+        {% else %}
+          使用 SIP（預設）
+        {% endif %}
+      </span>
+    </div>
+    <div class="form-group">
+      <label>Account SID</label>
+      <input id="twilio-account-sid"
+             value="{{ cfg.get('twilio',{}).get('account_sid','') | e }}"
+             placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">
+    </div>
+    <div class="form-group">
+      <label>Auth Token</label>
+      <div style="position:relative;">
+        <input id="twilio-auth-token" type="password"
+               value="{{ cfg.get('twilio',{}).get('auth_token','') | e }}"
+               placeholder="（不修改請留空）"
+               autocomplete="new-password">
+        <button type="button" onclick="togglePwd('twilio-auth-token')"
+                style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-secondary);cursor:pointer;">
+          <i class="fas fa-eye" id="eye-twilio-auth-token"></i>
+        </button>
+      </div>
+      <small style="color:var(--text-secondary);">留空表示不修改目前 Token</small>
+    </div>
+    <div class="form-group">
+      <label>發話號碼（E.164 格式）</label>
+      <input id="twilio-from-number"
+             value="{{ cfg.get('twilio',{}).get('from_number','') | e }}"
+             placeholder="+886XXXXXXXXX">
+    </div>
+    <div class="form-group">
+      <label>本服務公開 URL</label>
+      <input id="twilio-base-url"
+             value="{{ cfg.get('twilio',{}).get('public_base_url','') | e }}"
+             placeholder="https://your-server.example.com">
+      <small style="color:var(--text-secondary);">Twilio 需能呼叫此 URL 下的 /twiml/ 和 /audio/</small>
+    </div>
+  </div>
+
+  <div class="notice-box notice-info">
+    <i class="fas fa-info-circle"></i>
+    <span>Twilio 需要 <strong>HTTPS</strong> 的 public_base_url。測試環境可用 ngrok：
+    <code>ngrok http 5000</code></span>
+  </div>
+</div>
+
+<!-- ── Webhook 設定 ───────────────────────────── -->
+<div class="card">
+  <h3 style="margin-bottom:16px;"><i class="fas fa-link"></i> Webhook 驗證設定</h3>
+  <div class="settings-grid">
+    <div class="form-group">
+      <label>Auth Token（vROps 送出 Webhook 時的認證 Token）</label>
+      <div style="display:flex; gap:8px;">
+        <div style="position:relative; flex:1;">
+          <input id="webhook-auth-token" type="password"
+                 value="{{ cfg.get('webhook',{}).get('auth_token','') | e }}"
+                 placeholder="（不修改請留空）"
+                 autocomplete="new-password">
+          <button type="button" onclick="togglePwd('webhook-auth-token')"
+                  style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-secondary);cursor:pointer;">
+            <i class="fas fa-eye" id="eye-webhook-auth-token"></i>
+          </button>
+        </div>
+        <button class="btn" onclick="genWebhookToken()" style="background:var(--bg-hover); white-space:nowrap;">
+          <i class="fas fa-sync"></i> 重新產生
+        </button>
+      </div>
+      <small style="color:var(--text-secondary);">vROps Webhook 設定：Authorization: Bearer &lt;token&gt;</small>
+    </div>
+  </div>
+</div>
+
+<!-- ── 儲存按鈕 + 重啟提示 ─────────────────── -->
+<div style="display:flex; justify-content:flex-end; align-items:center; gap:16px; margin-top:8px;">
+  <span id="save-status" style="color:var(--text-secondary); font-size:0.9em;"></span>
+  <button class="btn btn-primary" onclick="saveSettings()" style="padding:10px 32px;">
+    <i class="fas fa-save"></i> 儲存設定
+  </button>
+</div>
+
+<div class="notice-box notice-warning" style="margin-top:16px;">
+  <i class="fas fa-redo"></i>
+  <span>儲存設定後需重啟服務才能生效：
+  <code>sudo systemctl restart vrops-alert-caller</code></span>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── 切換顯示/隱藏密碼 ────────────────────────
+function togglePwd(inputId) {
+  var input = document.getElementById(inputId);
+  var icon  = document.getElementById('eye-' + inputId);
+  if (input.type === 'password') {
+    input.type = 'text';
+    icon.classList.replace('fa-eye', 'fa-eye-slash');
+  } else {
+    input.type = 'password';
+    icon.classList.replace('fa-eye-slash', 'fa-eye');
+  }
+}
+
+// ── Twilio enabled 切換標籤 ───────────────────
+document.getElementById('twilio-enabled').addEventListener('change', function() {
+  document.getElementById('twilio-enabled-label').textContent =
+    this.checked ? '使用 Twilio（已停用 SIP）' : '使用 SIP（預設）';
+});
+
+// ── 產生隨機 Webhook Token ────────────────────
+function genWebhookToken() {
+  var arr = new Uint8Array(24);
+  window.crypto.getRandomValues(arr);
+  var token = Array.from(arr).map(function(b){ return b.toString(16).padStart(2,'0'); }).join('');
+  var el = document.getElementById('webhook-auth-token');
+  el.type = 'text';
+  el.value = token;
+  document.getElementById('eye-webhook-auth-token').classList.replace('fa-eye','fa-eye-slash');
+}
+
+// ── 設定測試結果方塊 (純 DOM，不使用 innerHTML) ──
+function setResultBox(boxId, ok, message) {
+  var box = document.getElementById(boxId);
+  box.style.display = 'block';
+  // 清空後重建
+  while (box.firstChild) box.removeChild(box.firstChild);
+
+  box.className = 'notice-box ' + (ok ? 'notice-success' : 'notice-warning');
+
+  var icon = document.createElement('i');
+  icon.className = ok ? 'fas fa-check-circle' : 'fas fa-exclamation-triangle';
+  box.appendChild(icon);
+
+  var lines = message.split('\n');
+  lines.forEach(function(line, idx) {
+    var sp = document.createElement('span');
+    sp.textContent = line;
+    box.appendChild(sp);
+    if (idx < lines.length - 1) box.appendChild(document.createElement('br'));
+  });
+}
+
+// ── 取得設定值（密碼為空字串時傳遮罩讓後端保留原值）─
+function getFieldValue(id, isSensitive) {
+  var val = document.getElementById(id).value.trim();
+  if (isSensitive && val === '') return '\u25cf\u25cf\u25cf\u25cf\u25cf\u25cf\u25cf\u25cf'; // ●●●●●●●●
+  return val;
+}
+
+// ── 儲存所有設定 ──────────────────────────────
+async function saveSettings() {
+  var payload = {
+    sip: {
+      server:    document.getElementById('sip-server').value.trim(),
+      port:      parseInt(document.getElementById('sip-port').value) || 5061,
+      transport: document.getElementById('sip-transport').value,
+      username:  document.getElementById('sip-username').value.trim(),
+      password:  getFieldValue('sip-password', true)
+    },
+    twilio: {
+      enabled:         document.getElementById('twilio-enabled').checked,
+      account_sid:     document.getElementById('twilio-account-sid').value.trim(),
+      auth_token:      getFieldValue('twilio-auth-token', true),
+      from_number:     document.getElementById('twilio-from-number').value.trim(),
+      public_base_url: document.getElementById('twilio-base-url').value.trim().replace(/\/+$/, '')
+    },
+    webhook: {
+      auth_token: getFieldValue('webhook-auth-token', true)
+    }
+  };
+
+  var status = document.getElementById('save-status');
+  status.textContent = '儲存中...';
+  status.style.color = 'var(--text-secondary)';
+
+  try {
+    var res = await fetch('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (res.status === 401) { window.location.href = '/login'; return; }
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+
+    status.textContent = '✓ 已儲存 — 請重啟服務生效';
+    status.style.color = '#27ae60';
+    showToast(data.message || '設定已儲存');
+  } catch(e) {
+    status.textContent = '✗ 儲存失敗';
+    status.style.color = '#e74c3c';
+    showToast('儲存失敗：' + e.message, true);
+  }
+}
+
+// ── 測試 SIP 連線狀態 ─────────────────────────
+async function testSip() {
+  var btn = document.getElementById('btn-test-sip');
+  btn.disabled = true;
+  btn.textContent = '測試中...';
+
+  try {
+    var res = await fetch('/api/test-sip', { method: 'POST' });
+    if (res.status === 401) { window.location.href = '/login'; return; }
+    var data = await res.json();
+    setResultBox('sip-test-result', !!data.registered, data.message || '');
+  } catch(e) {
+    setResultBox('sip-test-result', false, '測試失敗：' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '';
+    var icon = document.createElement('i');
+    icon.className = 'fas fa-plug';
+    btn.appendChild(icon);
+    btn.appendChild(document.createTextNode(' 測試連線'));
+  }
+}
+
+// ── 驗證 Twilio 帳號憑證 ──────────────────────
+async function testTwilio() {
+  var btn = document.getElementById('btn-test-twilio');
+  btn.disabled = true;
+  btn.textContent = '驗證中...';
+
+  var account_sid = document.getElementById('twilio-account-sid').value.trim();
+  var auth_token  = getFieldValue('twilio-auth-token', true);
+
+  try {
+    var res = await fetch('/api/test-twilio', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ account_sid: account_sid, auth_token: auth_token })
+    });
+    if (res.status === 401) { window.location.href = '/login'; return; }
+    var data = await res.json();
+    setResultBox('twilio-test-result', !!data.ok, data.message || '');
+  } catch(e) {
+    setResultBox('twilio-test-result', false, '驗證失敗：' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '';
+    var icon = document.createElement('i');
+    icon.className = 'fas fa-check-circle';
+    btn.appendChild(icon);
+    btn.appendChild(document.createTextNode(' 驗證帳號'));
+  }
+}
+</script>
+{% endblock %}

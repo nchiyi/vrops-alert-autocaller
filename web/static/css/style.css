@@ -278,3 +278,76 @@ input:focus, select:focus, textarea:focus {
     margin-bottom: 16px;
     font-size: 0.9em;
 }
+
+/* ── 設定頁 ── */
+.settings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 0 24px;
+}
+
+/* 通知方塊（notice-box） */
+.notice-box {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 0.9em;
+    line-height: 1.5;
+    margin-top: 12px;
+}
+.notice-box i { margin-top: 2px; flex-shrink: 0; }
+.notice-warning {
+    background: rgba(255,217,61,0.10);
+    border: 1px solid rgba(255,217,61,0.30);
+    color: var(--warning);
+}
+.notice-info {
+    background: rgba(100,255,218,0.07);
+    border: 1px solid rgba(100,255,218,0.20);
+    color: var(--accent);
+}
+.notice-success {
+    background: rgba(107,203,119,0.10);
+    border: 1px solid rgba(107,203,119,0.30);
+    color: var(--success);
+}
+.notice-box code {
+    background: rgba(255,255,255,0.10);
+    padding: 1px 6px;
+    border-radius: 4px;
+}
+
+/* Toggle 開關 */
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 48px;
+    height: 26px;
+    flex-shrink: 0;
+    cursor: pointer;
+}
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-switch .slider {
+    position: absolute;
+    inset: 0;
+    background: var(--bg-hover);
+    border-radius: 26px;
+    transition: 0.3s;
+    border: 1px solid var(--border);
+}
+.toggle-switch .slider:before {
+    content: "";
+    position: absolute;
+    width: 18px; height: 18px;
+    left: 3px; bottom: 3px;
+    background: var(--text-secondary);
+    border-radius: 50%;
+    transition: 0.3s;
+}
+.toggle-switch input:checked + .slider { background: rgba(100,255,218,0.20); border-color: var(--accent); }
+.toggle-switch input:checked + .slider:before {
+    background: var(--accent);
+    transform: translateX(22px);
+}

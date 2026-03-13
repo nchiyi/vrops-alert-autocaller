@@ -3,28 +3,37 @@
  */
 
 // ============================
-// SIP 狀態即時更新
+// 撥號後端狀態即時更新（SIP / Twilio）
 // ============================
-function setSipStatus(online) {
+function setCallerStatus(data) {
     const el = document.getElementById('sip-status');
     if (!el) return;
-    el.textContent = '';
+    while (el.firstChild) el.removeChild(el.firstChild);
+
+    const backend = data.caller_backend || 'sip';
     const dot = document.createElement('span');
-    dot.className = 'dot ' + (online ? 'online' : 'offline');
-    const text = document.createTextNode(online ? ' SIP 已連線' : ' SIP 離線');
-    el.appendChild(dot);
-    el.appendChild(text);
+
+    if (backend === 'twilio') {
+        dot.className = 'dot online';
+        el.appendChild(dot);
+        el.appendChild(document.createTextNode(' Twilio 後端'));
+    } else {
+        const online = !!data.sip_registered;
+        dot.className = 'dot ' + (online ? 'online' : 'offline');
+        el.appendChild(dot);
+        el.appendChild(document.createTextNode(online ? ' SIP 已連線' : ' SIP 離線'));
+    }
 }
 
 async function updateSipStatus() {
     try {
         const res = await fetch('/health');
         const data = await res.json();
-        setSipStatus(!!data.sip_registered);
+        setCallerStatus(data);
     } catch (e) {
         const el = document.getElementById('sip-status');
         if (el) {
-            el.textContent = '';
+            while (el.firstChild) el.removeChild(el.firstChild);
             const dot = document.createElement('span');
             dot.className = 'dot offline';
             el.appendChild(dot);

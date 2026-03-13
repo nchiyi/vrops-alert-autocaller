@@ -27,6 +27,9 @@
             <li class="{% if '/routing' in request.path %}active{% endif %}">
                 <a href="/routing"><i class="fas fa-route"></i> 告警路由</a>
             </li>
+            <li class="{% if '/settings' in request.path %}active{% endif %}">
+                <a href="/settings"><i class="fas fa-cog"></i> 系統設定</a>
+            </li>
         </ul>
         <div class="sidebar-footer">
             <div class="status-indicator" id="sip-status">
