@@ -315,6 +315,7 @@ setup_directories() {
     # 從 GitHub clone（或若已存在則 pull 更新）
     if [[ -d "$INSTALL_DIR/.git" ]]; then
         log_info "偵測到既有 git repo，執行 git pull..."
+        git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
         git -C "$INSTALL_DIR" pull origin main
     else
         log_info "從 GitHub clone 程式碼..."
@@ -644,6 +645,7 @@ main() {
                 exit 1
             fi
             # 保留 settings.yaml 不被覆蓋
+            git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
             git -C "$INSTALL_DIR" pull origin main
             chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
             systemctl restart "$SERVICE_NAME"
