@@ -17,7 +17,16 @@ from enum import Enum
 from dataclasses import dataclass
 from typing import Optional
 
-import pjsua2 as pj
+try:
+    import pjsua2 as pj
+    PJSUA2_AVAILABLE = True
+except ImportError:
+    pj = None
+    PJSUA2_AVAILABLE = False
+    logging.getLogger(__name__).warning(
+        "pjsua2 未安裝或無法載入 — SIP 撥號功能停用。"
+        "請確認 pjproject 已編譯並以 --system-site-packages 建立 venv。"
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -338,7 +347,17 @@ def make_sip_call(
 ) -> CallReport:
     """
     透過 EZUC+ 發起 SIP TLS 通話並播放語音告警。
+    若 pjsua2 未安裝則回傳 failed CallReport，不中斷服務。
     """
+    if not PJSUA2_AVAILABLE:
+        logging.getLogger(__name__).error(
+            "pjsua2 不可用，無法撥號至 %s", target_number
+        )
+        return CallReport(
+            success=False,
+            duration_seconds=0.0,
+            error="pjsua2 未安裝，SIP 撥號停用",
+        )
     engine = SipEngine.get_instance(config)
     return engine.make_call(wav_path, target_number)
 

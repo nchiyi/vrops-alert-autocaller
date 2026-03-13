@@ -337,8 +337,10 @@ setup_venv() {
             done
         fi
         log_info "建立虛擬環境 (${PYTHON_BIN})..."
-        sudo -u "$SERVICE_USER" "$PYTHON_BIN" -m venv "$VENV_DIR"
-        log_info "虛擬環境建立：$VENV_DIR"
+        # --system-site-packages 讓 venv 繼承系統安裝的 pjsua2.so
+        # （pjsua2 由原始碼編譯安裝到 /usr/local/lib，pip 無法安裝）
+        sudo -u "$SERVICE_USER" "$PYTHON_BIN" -m venv --system-site-packages "$VENV_DIR"
+        log_info "虛擬環境建立（含 system-site-packages）：$VENV_DIR"
     else
         log_info "虛擬環境已存在，更新套件..."
     fi
