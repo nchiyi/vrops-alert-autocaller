@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard — vROps Alert Manager{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block body %}
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="value">{{ contacts|length }}</div>
+        <div class="label">聯絡人總數</div>
+    </div>
+    <div class="stat-card">
+        <div class="value">{{ groups|length }}</div>
+        <div class="label">群組數量</div>
+    </div>
+    <div class="stat-card">
+        <div class="value">{{ rules|length }}</div>
+        <div class="label">路由規則數</div>
+    </div>
+    <div class="stat-card">
+        <div class="value" id="queue-size">-</div>
+        <div class="label">Queue 待處理</div>
+    </div>
+</div>
+
+<div class="card">
+    <h3><i class="fas fa-history"></i> 最近通話紀錄</h3>
+    {% if calls.records %}
+    <table>
+        <thead>
+            <tr>
+                <th>時間</th>
+                <th>告警</th>
+                <th>主機</th>
+                <th>對象</th>
+                <th>結果</th>
+                <th>路由</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for call in calls.records %}
+            <tr>
+                <td>{{ call.timestamp[:19] }}</td>
+                <td>{{ call.alert_name or '-' }}</td>
+                <td>{{ call.resource_name or '-' }}</td>
+                <td>{{ call.target_name }}</td>
+                <td>
+                    {% if call.result == 'success' %}
+                    <span class="badge badge-success">成功</span>
+                    {% elif call.result == 'no_answer' %}
+                    <span class="badge badge-warning">未接</span>
+                    {% else %}
+                    <span class="badge badge-danger">{{ call.result }}</span>
+                    {% endif %}
+                </td>
+                <td>{{ call.routed_group or '預設' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color: var(--text-secondary); text-align: center; padding: 24px;">尚無通話紀錄</p>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function refreshDashboard() {
+    try {
+        const res = await fetch('/health');
+        const data = await res.json();
+        document.getElementById('queue-size').textContent = data.queue_size || 0;
+    } catch(e) {}
+}
+refreshDashboard();
+setInterval(refreshDashboard, 15000);
+</script>
+{% endblock %}

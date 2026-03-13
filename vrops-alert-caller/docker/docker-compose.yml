@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  vrops-alert-caller:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: vrops-alert-caller
+    image: vrops-alert-caller:latest
+    restart: unless-stopped
+
+    # SIP 通話需要 RTP 媒體串流，使用 host network 避免 NAT 問題
+    # 若環境不允許 host network，改用 ports 並確認 RTP port range 已映射
+    network_mode: host
+
+    # 若改用 bridge network，取消以下注解並移除 network_mode: host
+    # ports:
+    #   - "5000:5000"
+
+    volumes:
+      # 設定檔（需填入 SIP 帳密後掛載）
+      - ./config:/app/config:ro
+      # 日誌持久化
+      - vrops-logs:/app/logs
+      # 語音暫存（可選：掛載以便外部清理）
+      - vrops-audio:/app/audio
+
+    environment:
+      - TZ=Asia/Taipei
+      - PYTHONUNBUFFERED=1
+
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  vrops-logs:
+    driver: local
+  vrops-audio:
+    driver: local
