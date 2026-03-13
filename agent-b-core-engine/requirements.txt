@@ -1,0 +1,14 @@
+# Agent B — 核心引擎依賴套件
+# 安裝指令: pip install -r requirements.txt
+
+# TTS 引擎
+edge-tts>=6.1.9        # Microsoft Edge TTS（主引擎）
+gTTS>=2.5.0            # Google TTS（備選）
+pyttsx3>=2.90          # 離線 TTS（最後備援，需 espeak-ng）
+
+# 音訊處理（ffmpeg 需另外 apt install）
+pydub>=0.25.1          # 音訊格式處理（可選）
+
+# 其他基礎套件（通常已內建）
+# pjsua2 — 需從原始碼編譯，無法透過 pip 安裝
+# 詳見 02-中繼主機-環境建置.md 的編譯步驟
