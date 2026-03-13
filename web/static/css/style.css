@@ -319,6 +319,73 @@ input:focus, select:focus, textarea:focus {
     border-radius: 4px;
 }
 
+/* 外撥後端選擇器 */
+.backend-selector {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+.backend-option {
+    padding: 24px 20px;
+    border-radius: var(--radius);
+    border: 2px solid var(--border);
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.2s;
+    color: var(--text-secondary);
+    position: relative;
+}
+.backend-option:hover {
+    border-color: var(--accent);
+    color: var(--text-primary);
+    background: rgba(100,255,218,0.04);
+}
+.backend-option.active {
+    border-color: var(--accent);
+    background: rgba(100,255,218,0.08);
+    color: var(--accent);
+}
+.backend-option-title {
+    font-size: 1.1em;
+    font-weight: 600;
+    margin-top: 12px;
+}
+.backend-option-desc {
+    font-size: 0.8em;
+    margin-top: 6px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+.backend-badge {
+    display: inline-block;
+    margin-top: 10px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.75em;
+    font-weight: 600;
+    background: rgba(107,203,119,0.15);
+    color: var(--success);
+}
+
+/* 停用中的設定區塊 */
+.section-inactive {
+    opacity: 0.4;
+    position: relative;
+}
+.section-inactive::after {
+    content: "停用中";
+    position: absolute;
+    top: 16px;
+    right: 20px;
+    background: rgba(255,107,107,0.15);
+    color: var(--danger);
+    font-size: 0.78em;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 20px;
+    pointer-events: none;
+}
+
 /* Toggle 開關 */
 .toggle-switch {
     position: relative;

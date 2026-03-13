@@ -5,16 +5,38 @@
 
 {% block body %}
 
-<!-- ── SIP 設定 ──────────────────────────────── -->
+<!-- ── 外撥後端選擇 ───────────────────────────── -->
 <div class="card">
+  <h3 style="margin-bottom:16px;"><i class="fas fa-exchange-alt"></i> 外撥後端選擇</h3>
+  <div class="backend-selector">
+    <div class="backend-option" id="opt-sip" onclick="selectBackend('sip')">
+      <i class="fas fa-phone fa-2x"></i>
+      <div class="backend-option-title">SIP（EZUC+）</div>
+      <div class="backend-option-desc">透過企業 SIP Trunk 直接撥號<br>需申請 SIP Trunk 帳號</div>
+      <span class="backend-badge" id="badge-sip">目前啟用</span>
+    </div>
+    <div class="backend-option" id="opt-twilio" onclick="selectBackend('twilio')">
+      <i class="fas fa-cloud fa-2x"></i>
+      <div class="backend-option-title">Twilio</div>
+      <div class="backend-option-desc">透過 Twilio REST API 外撥<br>需公開 HTTPS URL</div>
+      <span class="backend-badge" id="badge-twilio">目前啟用</span>
+    </div>
+  </div>
+  <!-- 隱藏 checkbox，供 saveSettings() 讀取 -->
+  <input type="checkbox" id="twilio-enabled" style="display:none;"
+         {% if cfg.get('twilio',{}).get('enabled', False) %}checked{% endif %}>
+</div>
+
+<!-- ── SIP 設定 ──────────────────────────────── -->
+<div class="card" id="card-sip">
   <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-    <h3><i class="fas fa-phone"></i> SIP 撥號設定（EZUC+）</h3>
+    <h3>
+      <i class="fas fa-phone"></i> SIP 撥號設定（EZUC+）
+      <span class="badge badge-success" id="sip-active-badge" style="margin-left:8px; vertical-align:middle; display:none;">啟用中</span>
+    </h3>
     <div style="display:flex; gap:8px;">
       <button class="btn" id="btn-test-sip" onclick="testSip()" style="background:var(--bg-hover);">
         <i class="fas fa-plug"></i> 測試連線
-      </button>
-      <button class="btn btn-primary" onclick="saveSettings()">
-        <i class="fas fa-save"></i> 儲存所有設定
       </button>
     </div>
   </div>
@@ -69,9 +91,12 @@
 </div>
 
 <!-- ── Twilio 設定 ────────────────────────────── -->
-<div class="card">
+<div class="card" id="card-twilio">
   <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-    <h3><i class="fas fa-cloud"></i> Twilio 外撥設定</h3>
+    <h3>
+      <i class="fas fa-cloud"></i> Twilio 外撥設定
+      <span class="badge badge-success" id="twilio-active-badge" style="margin-left:8px; vertical-align:middle; display:none;">啟用中</span>
+    </h3>
     <button class="btn" id="btn-test-twilio" onclick="testTwilio()" style="background:var(--bg-hover);">
       <i class="fas fa-check-circle"></i> 驗證帳號
     </button>
@@ -80,21 +105,6 @@
   <div id="twilio-test-result" style="display:none; margin-bottom:12px;"></div>
 
   <div class="settings-grid" style="margin-bottom:16px;">
-    <div class="form-group" style="grid-column:1/-1; display:flex; align-items:center; gap:12px;">
-      <label style="margin:0; white-space:nowrap;">啟用 Twilio 作為外撥後端</label>
-      <label class="toggle-switch">
-        <input type="checkbox" id="twilio-enabled"
-               {% if cfg.get('twilio',{}).get('enabled', False) %}checked{% endif %}>
-        <span class="slider"></span>
-      </label>
-      <span id="twilio-enabled-label" style="color:var(--text-secondary); font-size:0.9em;">
-        {% if cfg.get('twilio',{}).get('enabled', False) %}
-          使用 Twilio（已停用 SIP）
-        {% else %}
-          使用 SIP（預設）
-        {% endif %}
-      </span>
-    </div>
     <div class="form-group">
       <label>Account SID</label>
       <input id="twilio-account-sid"
@@ -181,6 +191,38 @@
 
 {% block scripts %}
 <script>
+// ── 初始化：根據目前設定決定啟用哪個後端 ─────────
+var _currentBackend = document.getElementById('twilio-enabled').checked ? 'twilio' : 'sip';
+selectBackend(_currentBackend, true);
+
+// ── 切換外撥後端 ──────────────────────────────
+function selectBackend(backend, init) {
+  _currentBackend = backend;
+
+  // 同步隱藏 checkbox
+  document.getElementById('twilio-enabled').checked = (backend === 'twilio');
+
+  // 選項卡片樣式
+  document.getElementById('opt-sip').classList.toggle('active', backend === 'sip');
+  document.getElementById('opt-twilio').classList.toggle('active', backend === 'twilio');
+
+  // 啟用/停用徽章
+  document.getElementById('badge-sip').style.display   = backend === 'sip'    ? '' : 'none';
+  document.getElementById('badge-twilio').style.display = backend === 'twilio' ? '' : 'none';
+
+  // 卡片標頭徽章
+  document.getElementById('sip-active-badge').style.display    = backend === 'sip'    ? '' : 'none';
+  document.getElementById('twilio-active-badge').style.display  = backend === 'twilio' ? '' : 'none';
+
+  // 停用中的卡片變暗（仍可瀏覽，但視覺區分）
+  document.getElementById('card-sip').classList.toggle('section-inactive', backend === 'twilio');
+  document.getElementById('card-twilio').classList.toggle('section-inactive', backend === 'sip');
+
+  if (!init) {
+    showToast(backend === 'twilio' ? '已切換為 Twilio 後端（請儲存設定）' : '已切換為 SIP 後端（請儲存設定）');
+  }
+}
+
 // ── 切換顯示/隱藏密碼 ────────────────────────
 function togglePwd(inputId) {
   var input = document.getElementById(inputId);
@@ -193,12 +235,6 @@ function togglePwd(inputId) {
     icon.classList.replace('fa-eye-slash', 'fa-eye');
   }
 }
-
-// ── Twilio enabled 切換標籤 ───────────────────
-document.getElementById('twilio-enabled').addEventListener('change', function() {
-  document.getElementById('twilio-enabled-label').textContent =
-    this.checked ? '使用 Twilio（已停用 SIP）' : '使用 SIP（預設）';
-});
 
 // ── 產生隨機 Webhook Token ────────────────────
 function genWebhookToken() {
@@ -215,7 +251,6 @@ function genWebhookToken() {
 function setResultBox(boxId, ok, message) {
   var box = document.getElementById(boxId);
   box.style.display = 'block';
-  // 清空後重建
   while (box.firstChild) box.removeChild(box.firstChild);
 
   box.className = 'notice-box ' + (ok ? 'notice-success' : 'notice-warning');
@@ -236,7 +271,7 @@ function setResultBox(boxId, ok, message) {
 // ── 取得設定值（密碼為空字串時傳遮罩讓後端保留原值）─
 function getFieldValue(id, isSensitive) {
   var val = document.getElementById(id).value.trim();
-  if (isSensitive && val === '') return '\u25cf\u25cf\u25cf\u25cf\u25cf\u25cf\u25cf\u25cf'; // ●●●●●●●●
+  if (isSensitive && val === '') return '\u25cf\u25cf\u25cf\u25cf\u25cf\u25cf\u25cf\u25cf';
   return val;
 }
 
