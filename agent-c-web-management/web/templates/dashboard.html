@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — vROps Alert Manager{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block body %}
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="value">{{ groups | length }}</div>
+        <div class="label"><i class="fas fa-users"></i> 聯絡人群組</div>
+    </div>
+    <div class="stat-card">
+        <div class="value">{{ contacts | length }}</div>
+        <div class="label"><i class="fas fa-user"></i> 聯絡人總數</div>
+    </div>
+    <div class="stat-card">
+        <div class="value">{{ rules | length }}</div>
+        <div class="label"><i class="fas fa-route"></i> 路由規則</div>
+    </div>
+    <div class="stat-card">
+        <div class="value">{{ calls.total }}</div>
+        <div class="label"><i class="fas fa-phone"></i> 通話紀錄總數</div>
+    </div>
+</div>
+
+<div class="card">
+    <h3><i class="fas fa-clock"></i> 最近通話紀錄</h3>
+    {% if calls.records %}
+    <table>
+        <thead>
+            <tr>
+                <th>時間</th>
+                <th>告警</th>
+                <th>資源</th>
+                <th>嚴重度</th>
+                <th>撥號對象</th>
+                <th>結果</th>
+                <th>路由群組</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for call in calls.records %}
+            <tr>
+                <td>{{ call.timestamp }}</td>
+                <td>{{ call.alert_name or '-' }}</td>
+                <td>{{ call.resource_name or '-' }}</td>
+                <td>
+                    {% if call.criticality == 'CRITICAL' %}
+                        <span class="badge badge-danger">{{ call.criticality }}</span>
+                    {% elif call.criticality == 'WARNING' %}
+                        <span class="badge badge-warning">{{ call.criticality }}</span>
+                    {% else %}
+                        <span class="badge">{{ call.criticality or '-' }}</span>
+                    {% endif %}
+                </td>
+                <td>{{ call.target_name }} ({{ call.target_number }})</td>
+                <td>
+                    {% if call.result == 'answered' %}
+                        <span class="badge badge-success">已接聽</span>
+                    {% elif call.result == 'failed' %}
+                        <span class="badge badge-danger">失敗</span>
+                    {% else %}
+                        <span class="badge badge-warning">{{ call.result }}</span>
+                    {% endif %}
+                </td>
+                <td>{{ call.routed_group or '預設' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div style="margin-top:12px; text-align:right;">
+        <a href="/history" class="btn btn-primary btn-sm">查看全部 <i class="fas fa-arrow-right"></i></a>
+    </div>
+    {% else %}
+    <p style="color:var(--text-secondary); text-align:center; padding:32px;">尚無通話紀錄</p>
+    {% endif %}
+</div>
+
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+    <div class="card">
+        <h3><i class="fas fa-users"></i> 聯絡人群組</h3>
+        {% if groups %}
+        <table>
+            <thead>
+                <tr><th>群組名稱</th><th>人數</th><th>說明</th></tr>
+            </thead>
+            <tbody>
+                {% for g in groups %}
+                <tr>
+                    <td>{{ g.name }}</td>
+                    <td>{{ g.member_count }}</td>
+                    <td style="color:var(--text-secondary); font-size:0.85em;">{{ g.description or '-' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="color:var(--text-secondary);">尚無群組</p>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <h3><i class="fas fa-route"></i> 已設路由規則</h3>
+        {% if rules %}
+        <table>
+            <thead>
+                <tr><th>優先序</th><th>名稱</th><th>模式</th><th>目標群組</th></tr>
+            </thead>
+            <tbody>
+                {% for r in rules %}
+                <tr>
+                    <td>{{ r.priority }}</td>
+                    <td>{{ r.name }}</td>
+                    <td><code>{{ r.match_field }}={{ r.match_pattern }}</code></td>
+                    <td>{{ r.group_name }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="color:var(--text-secondary);">尚無路由規則</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
