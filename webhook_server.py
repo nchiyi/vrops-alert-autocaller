@@ -44,6 +44,20 @@ except ImportError:
 # ============================
 
 CONFIG_PATH = os.path.join(BASE_DIR, "config", "settings.yaml")
+
+# 若設定檔不存在，從範本自動建立（git pull 後不會消失使用者設定）
+if not os.path.exists(CONFIG_PATH):
+    _example = CONFIG_PATH.replace("settings.yaml", "settings.yaml.example")
+    if os.path.exists(_example):
+        import shutil as _shutil
+        _shutil.copy2(_example, CONFIG_PATH)
+        print(f"[init] 已從範本建立設定檔：{CONFIG_PATH}", flush=True)
+    else:
+        raise FileNotFoundError(
+            f"找不到設定檔 {CONFIG_PATH} 也沒有範本 {_example}，"
+            "請執行 install.sh 或手動複製 config/settings.yaml.example"
+        )
+
 with open(CONFIG_PATH, "r", encoding="utf-8") as f:
     CONFIG = yaml.safe_load(f)
 

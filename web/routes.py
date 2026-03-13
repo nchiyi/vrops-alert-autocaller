@@ -40,8 +40,22 @@ gui = Blueprint("gui", __name__,
 # 設定檔輔助函式
 # ============================
 
+def _ensure_settings_exists():
+    """若 settings.yaml 不存在，從 settings.yaml.example 複製一份"""
+    if os.path.exists(SETTINGS_PATH):
+        return
+    example_path = SETTINGS_PATH.replace("settings.yaml", "settings.yaml.example")
+    if os.path.exists(example_path):
+        import shutil
+        shutil.copy2(example_path, SETTINGS_PATH)
+        logger.info(f"已從範本建立設定檔：{SETTINGS_PATH}")
+    else:
+        logger.warning(f"找不到設定檔範本：{example_path}")
+
+
 def _read_yaml() -> dict:
-    """讀取 settings.yaml，失敗回傳空字典"""
+    """讀取 settings.yaml，不存在時從範本自動建立"""
+    _ensure_settings_exists()
     try:
         with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
