@@ -195,13 +195,22 @@ class SipEngine:
 
     _instance: Optional['SipEngine'] = None
     _init_lock = threading.Lock()
+    _ep_created = False   # pjsua2 Endpoint 在同一 process 只能建立一次
 
     @classmethod
     def get_instance(cls, config: dict) -> 'SipEngine':
-        if cls._instance is None:
-            with cls._init_lock:
-                if cls._instance is None:
-                    cls._instance = cls(config)
+        with cls._init_lock:
+            # 若上次初始化失敗且 Endpoint 已被建立，無法重試（pjsua2 限制）
+            # 唯一解法是重啟 process；此處回傳 None 讓呼叫方處理
+            if cls._instance is not None and not cls._instance._initialized:
+                raise RuntimeError(
+                    "SIP 引擎初始化失敗且無法在同一 process 重試，請重啟服務"
+                )
+            if cls._instance is None:
+                cls._instance = cls(config)
+                if not cls._instance._initialized:
+                    cls._instance = None
+                    raise RuntimeError("SIP 引擎初始化失敗，請確認 SIP 帳號設定後重啟服務")
         return cls._instance
 
     def __init__(self, config: dict):
