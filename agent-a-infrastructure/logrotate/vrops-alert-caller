@@ -1,0 +1,12 @@
+/opt/vrops-alert-caller/logs/*.log {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0640 vrops-alert vrops-alert
+    postrotate
+        systemctl reload vrops-alert-caller 2>/dev/null || true
+    endscript
+}

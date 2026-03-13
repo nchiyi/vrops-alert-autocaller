@@ -1,0 +1,63 @@
+# ================================================================
+# vROps Alert AutoCaller — 統一設定檔
+# 版本：v2（含 WebGUI、路由、TTL、風暴合併）
+# ================================================================
+# ⚠️  部署前務必修改所有 YOUR_* 佔位符
+# ================================================================
+
+# Webhook 伺服器
+webhook:
+  host: "0.0.0.0"
+  port: 5000
+  auth_token: "YOUR_WEBHOOK_SECRET"   # vROps Webhook 認證 token（可選）
+
+# TTS 語音合成
+tts:
+  engine: "edge-tts"                   # 可選: gtts | edge-tts | pyttsx3
+  voice: "zh-TW-HsiaoChenNeural"       # edge-tts 台灣中文語音
+  language: "zh-TW"
+  output_dir: "/opt/vrops-alert-caller/audio"
+  fallback_wav: "/opt/vrops-alert-caller/audio/fallback_alert.wav"
+
+# SIP / EZUC+ 設定
+sip:
+  server: "clouduc.e-usi.com"
+  port: 5061
+  transport: "tls"                     # EZUC+ 使用 SIP over TLS
+  username: "YOUR_SIP_USERNAME"        # EZUC+ SIP 帳號
+  password: "YOUR_SIP_PASSWORD"        # EZUC+ SIP 密碼
+  caller_id: "vROps Alert"
+
+# 告警管理
+alert:
+  dedup_window_seconds: 300            # 5 分鐘內同告警不重撥
+  max_retry: 3                         # 未接最多重撥次數
+  retry_interval_seconds: 120          # 重撥間隔（秒）
+  escalation: true                     # 啟用升級撥號
+  queue_ttl_seconds: 600               # Queue 中逾時丟棄（秒）
+  batch_threshold: 3                   # 同時 N 筆以上觸發風暴合併
+
+# WebGUI 管理介面
+webgui:
+  secret_key: "CHANGE_ME_RANDOM_KEY"  # Flask session secret
+  users:
+    admin: "CHANGE_ME"                 # admin 密碼
+
+# 日誌
+logging:
+  level: "INFO"                        # DEBUG | INFO | WARNING | ERROR
+  file: "/opt/vrops-alert-caller/logs/app.log"
+  db_path: "/opt/vrops-alert-caller/logs/alerts.db"
+
+# 預設撥號目標（無路由規則匹配時使用，亦可透過 WebGUI 管理）
+# 正式部署建議透過 WebGUI 的「聯絡人群組」管理，此處僅作備援
+call_targets:
+  - name: "值班人員A"
+    number: "1001"
+    priority: 1
+  - name: "值班人員B"
+    number: "1002"
+    priority: 2
+  - name: "主管"
+    number: "0912345678"
+    priority: 3
