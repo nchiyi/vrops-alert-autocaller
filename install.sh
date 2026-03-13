@@ -190,9 +190,36 @@ install_system_deps() {
     log_section "Step 1/6：安裝系統依賴套件"
 
     apt-get update -q
+
+    # ── 確保 Python 3.11+ 可用 ──────────────────────
+    # Ubuntu 20.04 / 22.04 預設 apt 沒有 python3.11，需要加 deadsnakes PPA
+    PY_BIN=""
+    for bin in python3.11 python3.12 python3.13; do
+        if command -v "$bin" &>/dev/null; then
+            PY_BIN="$bin"
+            break
+        fi
+    done
+
+    if [[ -z "$PY_BIN" ]]; then
+        log_info "偵測不到 Python 3.11+，嘗試從 deadsnakes PPA 安裝..."
+        apt-get install -y -q software-properties-common
+        add-apt-repository -y ppa:deadsnakes/ppa
+        apt-get update -q
+        apt-get install -y -q python3.11 python3.11-venv python3.11-dev
+        PY_BIN="python3.11"
+    else
+        log_info "偵測到 $PY_BIN，直接使用"
+        # 確保 venv 模組也裝上
+        PYVER="${PY_BIN##python}"   # e.g. "3.11"
+        apt-get install -y -q "${PY_BIN}-venv" "${PY_BIN}-dev" 2>/dev/null || true
+    fi
+
+    # 將選定的 Python 寫入環境變數，後續步驟共用
+    export PYTHON_BIN="$PY_BIN"
+    log_info "使用 Python：$(${PY_BIN} --version)"
+
     apt-get install -y -q \
-        python3.11 \
-        python3.11-venv \
         python3-pip \
         build-essential \
         libssl-dev \
@@ -200,7 +227,6 @@ install_system_deps() {
         libopus-dev \
         libv4l-dev \
         swig \
-        python3-dev \
         ffmpeg \
         espeak-ng \
         git \
@@ -302,7 +328,16 @@ setup_venv() {
     log_section "Step 4/6：建立 Python 虛擬環境"
 
     if [[ ! -d "$VENV_DIR" ]]; then
-        sudo -u "$SERVICE_USER" python3.11 -m venv "$VENV_DIR"
+        # PYTHON_BIN 由 install_system_deps() 設定；若直接呼叫此函式則自動偵測
+        if [[ -z "${PYTHON_BIN:-}" ]]; then
+            for bin in python3.11 python3.12 python3.13 python3; do
+                if command -v "$bin" &>/dev/null && "$bin" -c "import venv" 2>/dev/null; then
+                    PYTHON_BIN="$bin"; break
+                fi
+            done
+        fi
+        log_info "建立虛擬環境 (${PYTHON_BIN})..."
+        sudo -u "$SERVICE_USER" "$PYTHON_BIN" -m venv "$VENV_DIR"
         log_info "虛擬環境建立：$VENV_DIR"
     else
         log_info "虛擬環境已存在，更新套件..."
