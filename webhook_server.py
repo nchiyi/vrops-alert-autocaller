@@ -62,6 +62,28 @@ with open(CONFIG_PATH, "r", encoding="utf-8") as f:
     CONFIG = yaml.safe_load(f)
 
 # ============================
+# 日誌設定（最先初始化，確保所有後續訊息都能寫入檔案）
+# ============================
+
+_log_cfg = CONFIG.get("logging", {})
+_log_file = _log_cfg.get("file", "/opt/vrops-alert-caller/logs/app.log")
+_log_level = _log_cfg.get("level", "INFO")
+
+os.makedirs(os.path.dirname(_log_file), exist_ok=True)
+
+logging.basicConfig(
+    level=getattr(logging, _log_level, logging.INFO),
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.FileHandler(_log_file, encoding="utf-8"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+logger.info("=== vROps Alert AutoCaller 啟動中 ===")
+logger.info(f"設定檔：{CONFIG_PATH}")
+
+# ============================
 # Flask App 初始化
 # ============================
 
@@ -93,16 +115,7 @@ else:
     _CALLER_CONFIG = CONFIG.get("sip", {})
     _CALLER_BACKEND = "sip"
 
-# 設定日誌
-logging.basicConfig(
-    level=getattr(logging, CONFIG["logging"]["level"]),
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.FileHandler(CONFIG["logging"]["file"], encoding="utf-8"),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
+logger.info(f"外撥後端：{_CALLER_BACKEND.upper()}")
 
 # 註冊 WebGUI Blueprint
 app.register_blueprint(gui)
@@ -353,11 +366,13 @@ def process_batch_alert(batch: list):
 @app.route("/vrops-webhook", methods=["POST"])
 def vrops_webhook():
     """接收 vROps Webhook 推送（Token 驗證，不需 WebGUI 登入）"""
-    auth_token = CONFIG["webhook"].get("auth_token")
-    if auth_token and auth_token != "YOUR_WEBHOOK_SECRET":
+    auth_token = CONFIG["webhook"].get("auth_token", "")
+    # 若 auth_token 已設定（非空）則強制驗證
+    # 若要停用驗證，將 settings.yaml 中 auth_token 設為空字串
+    if auth_token:
         provided = request.headers.get("Authorization", "")
         if provided != f"Bearer {auth_token}":
-            logger.warning(f"Webhook 認證失敗: {request.remote_addr}")
+            logger.warning(f"Webhook 認證失敗（IP: {request.remote_addr}）")
             return jsonify({"error": "unauthorized"}), 401
 
     data = request.get_json(silent=True)
@@ -479,7 +494,7 @@ atexit.register(graceful_shutdown)
 # ============================
 
 if __name__ == "__main__":
-    logger.info("=== vROps Alert AutoCaller v3 啟動 ===")
+    logger.info("=== vROps Alert AutoCaller 以開發模式直接啟動（不建議正式環境使用）===")
     app.run(
         host=CONFIG["webhook"]["host"],
         port=CONFIG["webhook"]["port"],

@@ -400,7 +400,7 @@ def api_test_sip():
             msg = "SIP 已成功連線並完成帳號註冊"
         else:
             msg = ("SIP 未連線。請確認 settings.yaml 中的 SIP 設定後重啟服務。\n"
-                   "如使用 EZUC+，需申請 SIP Trunk 帳號（一般 App 帳號會收到 403 Forbidden）。")
+                   "常見原因：帳號/密碼錯誤、SIP 伺服器不可達、防火牆封鎖 SIP 埠（5060/5061）。")
         return jsonify({"registered": ready, "message": msg})
     except Exception as e:
         return jsonify({"registered": False, "message": f"狀態查詢失敗：{e}"}), 500
@@ -513,7 +513,8 @@ def api_test_call():
     raw_result = getattr(report, "result", "")
     result_str = raw_result.value if hasattr(raw_result, "value") else str(raw_result)
 
-    ok = result_str in ("answered", "completed", "no-answer", "success")
+    # CallResult enum 值：success / no_answer / busy / failed / timeout
+    ok = result_str == "success"
     err = getattr(report, "error_message", "") or ""
     duration = getattr(report, "duration_seconds", 0) or 0
 

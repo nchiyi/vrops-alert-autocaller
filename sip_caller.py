@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-sip_caller.py — SIP 撥號模組（EZUC+ 專用）v2
-透過 pjsua2 發起 SIP TLS 通話並播放語音檔。
+sip_caller.py — SIP 撥號模組 v2
+透過 pjsua2 發起 SIP TLS/UDP/TCP 通話並播放語音檔。
+支援任何標準 SIP Trunk（EZUC+、Twilio SIP Trunk、FreePBX、Asterisk 等）。
 
 修正：
 - SipEngine 單例模式（啟動一次，全程復用）
@@ -271,7 +272,7 @@ class SipEngine:
             self._acc.create(acc_cfg)
 
             if not self._acc.wait_for_registration(timeout=15):
-                raise RuntimeError("SIP 註冊到 EZUC+ 失敗")
+                raise RuntimeError("SIP 伺服器註冊失敗，請確認帳號、密碼與伺服器設定")
 
             self._initialized = True
             logger.info(
@@ -355,7 +356,8 @@ def make_sip_call(
     wav_path: str, target_number: str, config: dict
 ) -> CallReport:
     """
-    透過 EZUC+ 發起 SIP TLS 通話並播放語音告警。
+    透過 SIP Trunk 發起通話並播放語音告警。
+    支援任何標準 SIP 提供商（EZUC+、Twilio SIP Trunk、FreePBX、Asterisk 等）。
     若 pjsua2 未安裝則回傳 failed CallReport，不中斷服務。
     """
     if not PJSUA2_AVAILABLE:
@@ -363,9 +365,10 @@ def make_sip_call(
             "pjsua2 不可用，無法撥號至 %s", target_number
         )
         return CallReport(
-            success=False,
+            result=CallResult.FAILED,
+            target=target_number,
             duration_seconds=0.0,
-            error="pjsua2 未安裝，SIP 撥號停用",
+            error_message="pjsua2 未安裝，SIP 撥號停用",
         )
     engine = SipEngine.get_instance(config)
     return engine.make_call(wav_path, target_number)
@@ -375,7 +378,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
 
     test_config = {
-        "server": "clouduc.e-usi.com",
+        "server": "sip.example.com",    # 替換為實際 SIP 伺服器
         "port": 5061,
         "transport": "tls",
         "username": "YOUR_SIP_USER",
