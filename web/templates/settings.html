@@ -11,8 +11,8 @@
   <div class="backend-selector">
     <div class="backend-option" id="opt-sip" onclick="selectBackend('sip')">
       <i class="fas fa-phone fa-2x"></i>
-      <div class="backend-option-title">SIP（EZUC+）</div>
-      <div class="backend-option-desc">透過企業 SIP Trunk 直接撥號<br>需申請 SIP Trunk 帳號</div>
+      <div class="backend-option-title">SIP</div>
+      <div class="backend-option-desc">透過標準 SIP Trunk 直接撥號<br>支援 EZUC+、FreePBX、Twilio SIP 等</div>
       <span class="backend-badge" id="badge-sip">目前啟用</span>
     </div>
     <div class="backend-option" id="opt-twilio" onclick="selectBackend('twilio')">
@@ -30,7 +30,7 @@
 <div class="card" id="card-sip">
   <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
     <h3>
-      <i class="fas fa-phone"></i> SIP 撥號設定（EZUC+）
+      <i class="fas fa-phone"></i> SIP 撥號設定
       <span class="badge badge-success" id="sip-active-badge" style="margin-left:8px; vertical-align:middle; display:none;">啟用中</span>
     </h3>
     <button class="btn" id="btn-test-sip" onclick="testSip()" style="background:var(--bg-hover);">
@@ -44,7 +44,8 @@
     <div class="form-group">
       <label>SIP 伺服器</label>
       <input id="sip-server" value="{{ cfg.get('sip',{}).get('server','') | e }}"
-             placeholder="clouduc.e-usi.com">
+             placeholder="sip.example.com">
+      <small style="color:var(--text-secondary);">支援 EZUC+、Twilio SIP Trunk、FreePBX、Asterisk 等任何標準 SIP 提供商</small>
     </div>
     <div class="form-group">
       <label>SIP Port</label>
@@ -54,15 +55,15 @@
     <div class="form-group">
       <label>傳輸協定</label>
       <select id="sip-transport">
-        <option value="tls" {% if cfg.get('sip',{}).get('transport','tls')=='tls' %}selected{% endif %}>TLS（推薦）</option>
-        <option value="udp" {% if cfg.get('sip',{}).get('transport','')=='udp' %}selected{% endif %}>UDP</option>
-        <option value="tcp" {% if cfg.get('sip',{}).get('transport','')=='tcp' %}selected{% endif %}>TCP</option>
+        <option value="tls" {% if cfg.get('sip',{}).get('transport','tls')=='tls' %}selected{% endif %}>TLS（推薦，Port 5061）</option>
+        <option value="udp" {% if cfg.get('sip',{}).get('transport','')=='udp' %}selected{% endif %}>UDP（Port 5060）</option>
+        <option value="tcp" {% if cfg.get('sip',{}).get('transport','')=='tcp' %}selected{% endif %}>TCP（Port 5060）</option>
       </select>
     </div>
     <div class="form-group">
       <label>SIP 帳號（Username）</label>
       <input id="sip-username" value="{{ cfg.get('sip',{}).get('username','') | e }}"
-             placeholder="SIP Trunk 帳號">
+             placeholder="帳號">
     </div>
     <div class="form-group">
       <label>SIP 密碼</label>
@@ -80,10 +81,16 @@
     </div>
   </div>
 
-  <div class="notice-box notice-warning">
-    <i class="fas fa-exclamation-triangle"></i>
-    <span>EZUC+ 一般 App 帳號（格式：帳號.分機.mobile）會收到 <strong>403 Forbidden</strong>。
-    自動撥號需向 eASPNet 申請 <strong>SIP Trunk 帳號</strong>。</span>
+  <div class="notice-box notice-info">
+    <i class="fas fa-info-circle"></i>
+    <div>
+      <strong>各 SIP 供應商注意事項：</strong>
+      <ul style="padding-left:18px; margin-top:4px; line-height:1.8;">
+        <li><strong>EZUC+（中華電信）</strong>：一般 App 帳號會收到 403 Forbidden，需向 eASPNet 申請 <strong>SIP Trunk 帳號</strong></li>
+        <li><strong>Twilio SIP Trunk</strong>：需在 Twilio 控制台建立 SIP Domain，使用 TLS + 憑證驗證</li>
+        <li><strong>FreePBX / Asterisk</strong>：需開放外部 SIP 存取，建議使用 TLS 加密</li>
+      </ul>
+    </div>
   </div>
 </div>
 
@@ -155,6 +162,118 @@
         <li><strong>測試環境</strong>：用 ngrok 穿透本機 → <code>ngrok http 5000</code><br>
             取得的 <code>https://xxxx.ngrok.io</code> 填入此欄</li>
       </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ── HTTPS / SSL 設定 ──────────────────────── -->
+<div class="card">
+  <h3 style="margin-bottom:16px;"><i class="fas fa-lock"></i> HTTPS / SSL 設定
+    <small style="font-size:0.7em; font-weight:400; color:var(--text-secondary); margin-left:8px;">
+      讓 Twilio 能回呼本服務（需公開 HTTPS URL）
+    </small>
+  </h3>
+
+  <!-- SSL 狀態列 -->
+  <div id="ssl-status-box" style="margin-bottom:16px;">
+    <div class="notice-box notice-info" style="margin-top:0;">
+      <i class="fas fa-spinner fa-spin"></i>
+      <span>正在載入 SSL 狀態...</span>
+    </div>
+  </div>
+
+  <!-- Tab 切換 -->
+  <div style="display:grid; grid-template-columns:1fr 1fr; margin-bottom:20px;
+              border:1px solid var(--border); border-radius:8px; overflow:hidden;">
+    <button id="ssl-tab-le"
+            onclick="switchSslTab('le')"
+            style="padding:10px 16px; border:none; cursor:pointer; font-family:inherit;
+                   font-size:0.9em; transition:all 0.2s;
+                   background:rgba(100,255,218,0.08); color:var(--accent);">
+      <i class="fas fa-certificate"></i> Let's Encrypt 自動申請
+    </button>
+    <button id="ssl-tab-custom"
+            onclick="switchSslTab('custom')"
+            style="padding:10px 16px; border:none; cursor:pointer; font-family:inherit;
+                   font-size:0.9em; transition:all 0.2s;
+                   background:var(--bg-primary); color:var(--text-secondary);">
+      <i class="fas fa-upload"></i> 手動上傳憑證
+    </button>
+  </div>
+
+  <!-- ── Let's Encrypt 面板 ── -->
+  <div id="ssl-panel-le">
+    <div class="settings-grid">
+      <div class="form-group">
+        <label>網域名稱（No-IP / DDNS）</label>
+        <input id="ssl-domain" placeholder="vrops.myddns.me">
+        <small style="color:var(--text-secondary);">
+          DNS A Record 須指向本機對外 IP，且 Port 80 已透過 NAT 轉發
+        </small>
+      </div>
+      <div class="form-group">
+        <label>聯絡 Email（憑證到期通知用）</label>
+        <input id="ssl-email" type="email" placeholder="admin@example.com">
+      </div>
+    </div>
+    <div id="ssl-le-result" style="display:none; margin-bottom:12px;"></div>
+    <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
+      <button class="btn btn-primary" id="btn-ssl-certbot" onclick="runCertbot()">
+        <i class="fas fa-magic"></i> 申請 Let's Encrypt 憑證
+      </button>
+      <button class="btn" id="btn-install-nginx" onclick="installNginx()"
+              style="background:var(--bg-hover);">
+        <i class="fas fa-server"></i> 安裝 nginx（若未安裝）
+      </button>
+    </div>
+    <div class="notice-box notice-warning" style="margin-top:12px;">
+      <i class="fas fa-exclamation-triangle"></i>
+      <div>
+        <strong>申請前確認：</strong>
+        <ul style="padding-left:18px; margin-top:4px; line-height:1.9;">
+          <li>No-IP / DDNS 域名 A Record 已正確指向本機對外 IP</li>
+          <li>路由器 <strong>Port 80 NAT 轉發</strong>已開啟到本機（Let's Encrypt 驗證用）</li>
+          <li>防火牆已開放 Port 80：<code>sudo ufw allow 80</code></li>
+          <li>申請期間 nginx 會暫停約 10 秒（服務短暫中斷）</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 手動上傳面板 ── -->
+  <div id="ssl-panel-custom" style="display:none;">
+    <div class="settings-grid" style="margin-bottom:16px;">
+      <div class="form-group">
+        <label>網域名稱（或對外 IP）</label>
+        <input id="ssl-custom-domain" placeholder="vrops.myddns.me">
+        <small style="color:var(--text-secondary);">若無域名可留空（nginx server_name 設為 _）</small>
+      </div>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
+      <div class="form-group" style="margin:0;">
+        <label>憑證鏈檔（fullchain.pem / cert.pem）</label>
+        <input type="file" id="ssl-cert-file" accept=".pem,.crt,.cer"
+               style="padding:8px; cursor:pointer;">
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label>私鑰檔（privkey.pem / key.pem）</label>
+        <input type="file" id="ssl-key-file" accept=".pem,.key"
+               style="padding:8px; cursor:pointer;">
+      </div>
+    </div>
+    <div id="ssl-custom-result" style="display:none; margin-bottom:12px;"></div>
+    <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
+      <button class="btn btn-primary" id="btn-ssl-upload" onclick="uploadCert()">
+        <i class="fas fa-upload"></i> 上傳並套用憑證
+      </button>
+      <button class="btn" id="btn-install-nginx-2" onclick="installNginx()"
+              style="background:var(--bg-hover);">
+        <i class="fas fa-server"></i> 安裝 nginx（若未安裝）
+      </button>
+    </div>
+    <div class="notice-box notice-info" style="margin-top:12px;">
+      <i class="fas fa-info-circle"></i>
+      <span>上傳後 nginx 將自動重載憑證。私鑰檔僅儲存於伺服器 <code>/opt/vrops-alert-caller/ssl/</code>，不會外傳。</span>
     </div>
   </div>
 </div>
@@ -414,6 +533,140 @@ async function detectUrl() {
     }
   } catch(e) {
     showToast('偵測失敗：' + e.message, true);
+  }
+}
+
+// ── SSL 狀態載入 ──────────────────────────────
+async function loadSslStatus() {
+  try {
+    var res = await fetch('/api/ssl/status');
+    if (!res.ok) { renderSslStatus(null); return; }
+    var d = await res.json();
+    renderSslStatus(d);
+  } catch(e) {
+    renderSslStatus(null);
+  }
+}
+
+function renderSslStatus(d) {
+  var box = document.getElementById('ssl-status-box');
+  if (!d) {
+    box.innerHTML = '<div class="notice-box notice-info" style="margin-top:0;"><i class="fas fa-info-circle"></i><span>無法取得 SSL 狀態</span></div>';
+    return;
+  }
+  if (d.nginx_running && d.cert && d.cert.type) {
+    var typeLabel = d.cert.type === 'letsencrypt' ? 'Let\'s Encrypt' : '自訂憑證';
+    var expPart   = d.cert.expiry ? '　到期：' + d.cert.expiry : '';
+    var domPart   = d.domain ? '　域名：<strong>' + d.domain + '</strong>' : '';
+    box.innerHTML = '<div class="notice-box notice-success" style="margin-top:0;"><i class="fas fa-check-circle"></i>' +
+      '<span>HTTPS 啟用中' + domPart + '　憑證：' + typeLabel + expPart + '</span></div>';
+    // 預填域名欄位
+    if (d.domain) {
+      document.getElementById('ssl-domain').value = d.domain;
+      document.getElementById('ssl-custom-domain').value = d.domain;
+    }
+  } else if (d.nginx_running) {
+    box.innerHTML = '<div class="notice-box notice-warning" style="margin-top:0;"><i class="fas fa-exclamation-triangle"></i><span>nginx 運行中，但尚未設定 SSL 憑證。請申請或上傳憑證後套用。</span></div>';
+  } else {
+    box.innerHTML = '<div class="notice-box notice-info" style="margin-top:0;"><i class="fas fa-info-circle"></i>' +
+      '<span>nginx 未安裝或未啟動。請先點「安裝 nginx」，再申請/上傳憑證。</span></div>';
+  }
+}
+loadSslStatus();
+
+// ── 切換 SSL Tab ──────────────────────────────
+function switchSslTab(tab) {
+  var isLe = (tab === 'le');
+  document.getElementById('ssl-panel-le').style.display     = isLe ? '' : 'none';
+  document.getElementById('ssl-panel-custom').style.display = isLe ? 'none' : '';
+  var leBtn  = document.getElementById('ssl-tab-le');
+  var cuBtn  = document.getElementById('ssl-tab-custom');
+  leBtn.style.background = isLe ? 'rgba(100,255,218,0.08)' : 'var(--bg-primary)';
+  leBtn.style.color      = isLe ? 'var(--accent)' : 'var(--text-secondary)';
+  cuBtn.style.background = isLe ? 'var(--bg-primary)' : 'rgba(100,255,218,0.08)';
+  cuBtn.style.color      = isLe ? 'var(--text-secondary)' : 'var(--accent)';
+}
+
+// ── 安裝 nginx ────────────────────────────────
+async function installNginx() {
+  var btns = ['btn-install-nginx', 'btn-install-nginx-2'];
+  btns.forEach(function(id){ var b=document.getElementById(id); if(b){b.disabled=true; b.innerHTML='<i class="fas fa-spinner fa-spin"></i> 安裝中...';} });
+  try {
+    var res = await fetch('/api/ssl/install-nginx', { method: 'POST' });
+    var data = await res.json();
+    showToast(data.ok ? '✓ ' + data.message : '✗ ' + data.message, !data.ok);
+    if (data.ok) loadSslStatus();
+  } catch(e) {
+    showToast('安裝失敗：' + e.message, true);
+  } finally {
+    btns.forEach(function(id){ var b=document.getElementById(id); if(b){b.disabled=false; b.innerHTML='<i class="fas fa-server"></i> 安裝 nginx（若未安裝）';} });
+  }
+}
+
+// ── 申請 Let's Encrypt ────────────────────────
+async function runCertbot() {
+  var domain = document.getElementById('ssl-domain').value.trim();
+  var email  = document.getElementById('ssl-email').value.trim();
+  if (!domain) { showToast('請輸入域名', true); return; }
+  if (!email)  { showToast('請輸入 Email', true); return; }
+
+  var btn = document.getElementById('btn-ssl-certbot');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 申請中（最多 3 分鐘）...';
+  setResultBox('ssl-le-result', true, '正在申請憑證，請耐心等候（需 1～3 分鐘）...');
+
+  try {
+    var res = await fetch('/api/ssl/certbot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain: domain, email: email })
+    });
+    if (res.status === 401) { window.location.href = '/login'; return; }
+    var data = await res.json();
+    setResultBox('ssl-le-result', !!data.ok, data.message || '');
+    if (data.ok) {
+      loadSslStatus();
+      // 自動更新 Twilio URL 欄位
+      document.getElementById('twilio-base-url').value = 'https://' + domain;
+    }
+  } catch(e) {
+    setResultBox('ssl-le-result', false, '申請失敗：' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-magic"></i> 申請 Let\'s Encrypt 憑證';
+  }
+}
+
+// ── 上傳自訂憑證 ──────────────────────────────
+async function uploadCert() {
+  var certFile = document.getElementById('ssl-cert-file').files[0];
+  var keyFile  = document.getElementById('ssl-key-file').files[0];
+  var domain   = document.getElementById('ssl-custom-domain').value.trim();
+  if (!certFile || !keyFile) { showToast('請選擇憑證檔和私鑰檔', true); return; }
+
+  var btn = document.getElementById('btn-ssl-upload');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 上傳中...';
+
+  var fd = new FormData();
+  fd.append('cert', certFile);
+  fd.append('key',  keyFile);
+  fd.append('domain', domain);
+
+  try {
+    var res = await fetch('/api/ssl/upload', { method: 'POST', body: fd });
+    if (res.status === 401) { window.location.href = '/login'; return; }
+    var data = await res.json();
+    setResultBox('ssl-custom-result', !!data.ok, data.message || '');
+    if (data.ok) {
+      loadSslStatus();
+      if (domain) document.getElementById('twilio-base-url').value = 'https://' + domain;
+    }
+  } catch(e) {
+    setResultBox('ssl-custom-result', false, '上傳失敗：' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-upload"></i> 上傳並套用憑證';
   }
 }
 

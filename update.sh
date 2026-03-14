@@ -13,9 +13,14 @@ VENV="$DIR/venv/bin"
 echo "=== [1/4] 拉取最新程式碼 ==="
 git -C "$DIR" pull origin main
 
-echo "=== [2/4] 修正設定檔權限 ==="
+echo "=== [2/4] 修正檔案權限 ==="
 chown -R vrops-alert:vrops-alert "$DIR/config/"
 chmod 640 "$DIR/config/settings.yaml" 2>/dev/null || true
+# ssl_helper.sh 必須 root 擁有且 chmod 700，才能由 sudo 安全呼叫
+if [[ -f "$DIR/ssl_helper.sh" ]]; then
+    chown root:root "$DIR/ssl_helper.sh"
+    chmod 700 "$DIR/ssl_helper.sh"
+fi
 
 echo "=== [3/4] 更新 Python 套件 ==="
 "$VENV/pip" install -q -r "$DIR/requirements.txt"

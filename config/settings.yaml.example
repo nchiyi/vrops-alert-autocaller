@@ -17,13 +17,15 @@ tts:
   output_dir: "/opt/vrops-alert-caller/audio"
   fallback_wav: "/opt/vrops-alert-caller/audio/fallback_alert.wav"
 
-# SIP 撥號設定（EZUC+）
+# SIP 撥號設定
+# 支援任何標準 SIP Trunk 提供商（EZUC+、Twilio SIP Trunk、FreePBX、Asterisk 等）
+# 若使用 Twilio 後端則此區塊可留預設值（不會被使用）
 sip:
-  server: "clouduc.e-usi.com"
-  port: 5061
-  transport: "tls"
-  username: "CHANGE_ME_SIP_USER"        # EZUC+ SIP 帳號
-  password: "CHANGE_ME_SIP_PASS"        # EZUC+ SIP 密碼
+  server: "CHANGE_ME_SIP_SERVER"        # SIP 伺服器位址，如 sip.example.com
+  port: 5061                            # TLS 通常為 5061；UDP/TCP 通常為 5060
+  transport: "tls"                      # tls（推薦）| udp | tcp
+  username: "CHANGE_ME_SIP_USER"        # SIP 帳號（Username）
+  password: "CHANGE_ME_SIP_PASS"        # SIP 密碼
 
 # 告警處理參數
 alert:
@@ -50,6 +52,14 @@ twilio:
   public_base_url: "https://your-server.example.com"
   # ↑ 本服務對外可連線的 HTTPS URL（Twilio 需能呼叫 /twiml/ 及 /audio/ 端點）
   #   若使用 ngrok 測試：https://xxxx.ngrok-free.app
+
+# nginx 反向代理 + HTTPS 設定
+# install.sh 安裝時自動設定；也可在 WebGUI「設定」→「HTTPS / SSL」頁面管理
+nginx:
+  enabled: false                        # true = 已安裝 nginx 反向代理
+  domain: ""                            # 對外域名（如 vrops.myddns.me）
+  # 憑證由 certbot 自動管理（Let's Encrypt）
+  # 或手動上傳至 /opt/vrops-alert-caller/ssl/fullchain.pem + privkey.pem
 
 # 日誌設定
 logging:

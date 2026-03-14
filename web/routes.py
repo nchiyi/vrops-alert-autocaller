@@ -10,6 +10,7 @@ import signal
 import threading
 import functools
 import logging
+import subprocess
 import yaml
 from flask import (
     Blueprint, render_template, request,
@@ -528,3 +529,196 @@ def api_test_call():
         "result": result_str,
         "backend": backend
     })
+
+
+# ============================
+# REST API — SSL / nginx 管理
+# ============================
+
+_SSL_HELPER = os.path.join(_BASE_DIR, "ssl_helper.sh")
+_SSL_DIR = os.path.join(_BASE_DIR, "ssl")
+
+
+def _run_ssl_helper(*args, timeout: int = 120):
+    """以 sudo 執行 ssl_helper.sh，回傳 (returncode, stdout, stderr)"""
+    cmd = ["sudo", _SSL_HELPER] + [str(a) for a in args]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    return result.returncode, result.stdout.strip(), result.stderr.strip()
+
+
+@gui.route("/api/ssl/status", methods=["GET"])
+@login_required
+def api_ssl_status():
+    """回傳 nginx / SSL 憑證狀態"""
+    cfg = _read_yaml()
+    # 從 public_base_url 解析域名
+    base_url = cfg.get("twilio", {}).get("public_base_url", "")
+    domain = base_url.replace("https://", "").replace("http://", "").split("/")[0]
+
+    # nginx 是否執行中
+    nginx_running = False
+    try:
+        rc, out, _ = _run_ssl_helper("nginx-status", timeout=5)
+        nginx_running = (out == "RUNNING")
+    except Exception:
+        pass
+
+    # 憑證資訊
+    cert = {"type": None, "expiry": None}
+    if domain:
+        try:
+            rc, out, _ = _run_ssl_helper("cert-status", domain, timeout=10)
+            if out.startswith("LE "):
+                cert = {"type": "letsencrypt", "expiry": out[3:].strip()}
+            elif out.startswith("CUSTOM "):
+                cert = {"type": "custom", "expiry": out[7:].strip()}
+        except Exception:
+            pass
+    elif os.path.isfile(os.path.join(_SSL_DIR, "fullchain.pem")):
+        # 有上傳過憑證但 URL 未設定
+        cert = {"type": "custom", "expiry": None}
+
+    return jsonify({
+        "nginx_running": nginx_running,
+        "cert": cert,
+        "domain": domain,
+    })
+
+
+@gui.route("/api/ssl/certbot", methods=["POST"])
+@login_required
+def api_ssl_certbot():
+    """申請 Let's Encrypt 憑證並設定 nginx HTTPS"""
+    data = request.get_json(silent=True) or {}
+    domain = data.get("domain", "").strip()
+    email = data.get("email", "").strip()
+
+    if not domain:
+        return jsonify({"ok": False, "message": "請輸入域名"}), 400
+    if not email:
+        return jsonify({"ok": False, "message": "請輸入 Email"}), 400
+
+    cfg = _read_yaml()
+    app_port = cfg.get("webhook", {}).get("port", 5000)
+
+    try:
+        # Step 1: 確認 nginx 已安裝
+        rc, out, err = _run_ssl_helper("nginx-status", timeout=5)
+        if out == "STOPPED":
+            # 嘗試先安裝（如果尚未安裝）
+            _run_ssl_helper("install-nginx", timeout=120)
+
+        # Step 2: 申請憑證（certbot standalone，nginx 暫停 ~10 秒）
+        rc, out, err = _run_ssl_helper("certbot", domain, email, timeout=180)
+        if rc != 0 or "CERTBOT_OK" not in out:
+            return jsonify({
+                "ok": False,
+                "message": f"Let's Encrypt 申請失敗：\n{err or out}\n\n"
+                           f"請確認：1) DNS A Record 已指向本機 IP  "
+                           f"2) Port 80 已開放且 NAT 轉發正確"
+            }), 500
+
+        # Step 3: 套用 nginx HTTPS 設定
+        rc, out, err = _run_ssl_helper("apply-nginx", domain, str(app_port), timeout=30)
+        if rc != 0 or "NGINX_OK" not in out:
+            return jsonify({
+                "ok": False,
+                "message": f"nginx 設定失敗：\n{err or out}"
+            }), 500
+
+        # Step 4: 更新 public_base_url
+        original = _read_yaml()
+        original.setdefault("twilio", {})["public_base_url"] = f"https://{domain}"
+        _write_yaml(original)
+
+        return jsonify({
+            "ok": True,
+            "message": f"✓ Let's Encrypt 憑證申請成功！\n公開 HTTPS URL：https://{domain}\n"
+                       f"Twilio public_base_url 已自動更新。"
+        })
+
+    except subprocess.TimeoutExpired:
+        return jsonify({
+            "ok": False,
+            "message": "操作逾時（3 分鐘）。請確認 DNS 設定正確且 Port 80 可從外部連線。"
+        }), 500
+    except Exception as e:
+        return jsonify({"ok": False, "message": f"執行錯誤：{e}"}), 500
+
+
+@gui.route("/api/ssl/upload", methods=["POST"])
+@login_required
+def api_ssl_upload():
+    """上傳自訂 SSL 憑證 (fullchain.pem + privkey.pem) 並套用 nginx"""
+    cert_file = request.files.get("cert")
+    key_file = request.files.get("key")
+    domain = request.form.get("domain", "").strip()
+
+    if not cert_file or not key_file:
+        return jsonify({
+            "ok": False,
+            "message": "請同時上傳憑證檔（fullchain.pem）和私鑰檔（privkey.pem）"
+        }), 400
+
+    # vrops-alert 有寫入 ssl/ 目錄的權限（install.sh 建立時設定）
+    try:
+        os.makedirs(_SSL_DIR, exist_ok=True)
+        cert_path = os.path.join(_SSL_DIR, "fullchain.pem")
+        key_path = os.path.join(_SSL_DIR, "privkey.pem")
+        cert_file.save(cert_path)
+        key_file.save(key_path)
+        os.chmod(cert_path, 0o644)
+        os.chmod(key_path, 0o600)
+    except Exception as e:
+        return jsonify({"ok": False, "message": f"憑證儲存失敗：{e}"}), 500
+
+    cfg = _read_yaml()
+    app_port = cfg.get("webhook", {}).get("port", 5000)
+
+    # 確認 nginx 已安裝
+    try:
+        rc, out, _ = _run_ssl_helper("nginx-status", timeout=5)
+        if out == "STOPPED":
+            _run_ssl_helper("install-nginx", timeout=120)
+    except Exception:
+        pass
+
+    # 套用 nginx 設定
+    try:
+        effective_domain = domain or "_"
+        rc, out, err = _run_ssl_helper("apply-custom", effective_domain, str(app_port), timeout=30)
+        if rc != 0 or ("CUSTOM_OK" not in out and "NGINX_OK" not in out):
+            return jsonify({
+                "ok": False,
+                "message": f"nginx 設定失敗：\n{err or out}"
+            }), 500
+    except Exception as e:
+        return jsonify({"ok": False, "message": f"nginx 設定失敗：{e}"}), 500
+
+    # 更新 public_base_url
+    if domain:
+        original = _read_yaml()
+        original.setdefault("twilio", {})["public_base_url"] = f"https://{domain}"
+        _write_yaml(original)
+
+    return jsonify({
+        "ok": True,
+        "message": f"✓ 自訂 SSL 憑證已上傳並套用！\n"
+                   + (f"公開 HTTPS URL：https://{domain}\nTwilio public_base_url 已自動更新。"
+                      if domain else "nginx 已套用憑證，請手動更新 Twilio public_base_url。")
+    })
+
+
+@gui.route("/api/ssl/install-nginx", methods=["POST"])
+@login_required
+def api_ssl_install_nginx():
+    """安裝 nginx + certbot（若尚未安裝）"""
+    try:
+        rc, out, err = _run_ssl_helper("install-nginx", timeout=180)
+        if rc != 0 or "INSTALL_OK" not in out:
+            return jsonify({"ok": False, "message": f"nginx 安裝失敗：\n{err or out}"}), 500
+        return jsonify({"ok": True, "message": "✓ nginx + certbot 安裝完成"})
+    except subprocess.TimeoutExpired:
+        return jsonify({"ok": False, "message": "安裝逾時"}), 500
+    except Exception as e:
+        return jsonify({"ok": False, "message": f"安裝失敗：{e}"}), 500
