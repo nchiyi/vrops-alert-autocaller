@@ -5,36 +5,36 @@
 [![VMware](https://img.shields.io/badge/VMware-vROps-orange.svg)](https://www.vmware.com/products/vrealize-operations.html)
 [![SIP](https://img.shields.io/badge/VoIP-SIP%20TLS-blueviolet.svg)](https://www.pjsip.org/)
 
-**vROps Alert AutoCaller** 是一個專為企業 IT 運維設計的自動化告警解決方案。當 VMware vROps 偵測到虛擬機異常（如 CPU、RAM、Disk 壓力）時，系統會自動透過 SIP (EZUC+) 撥打電話給指定值班人員，並利用高畫質 TTS 技術播報詳細的中文語音告警。
+**vROps Alert AutoCaller** 是一個專為企業 IT 運維設計的自動化告警解決方案。當 VMware vROps 偵測到虛擬機異常時，系統會自動透過 **標準 SIP Trunk (如 Twilio, EZUC+, FreePBX)** 或 **Twilio REST API** 撥打電話給值班人員，並利用高品質 TTS 技術播報詳細的中文語音告警。
 
 ---
 
 ## ✨ 核心特性
 
-- **🚀 智慧型告警佇列 (v3)**：支援 Queue TTL 機制，自動捨棄過期告警，確保通知的及時性。
-- **⛈️ 告警風暴合併 (v3)**：自動偵測爆發性告警，將多筆通知合併為一通摘要電話，避免通訊塞車與干擾。
-- **🎙️ 多重 TTS 備援**：支援 Edge-TTS (高品質)、gTTS 與離線 pyttsx3，確保網路斷線時仍具備基礎播報能力。
-- **🔐 安全防護**：Webhook 支援 Bearer Token 驗證；WebGUI 管理介面具備登入控管。
-- **📍 進階路由引擎**：可根據虛擬機名稱、叢集或告警層級，自動將電話分流至不同的維運群組。
-- **📊 視覺化管理**：內建 WebGUI，輕鬆管理聯絡人、群組、路由規則並即時查看撥號日誌。
-- **🛠️ 企業級部署**：支援 Ubuntu systemd 服務啟動與 Docker 容器化部署。
+- **🚀 智慧型告警佇列**：內建 Queue TTL 與積壓管理機制，自動捨棄過期告警，確保通知具備即時時效性。
+- **⛈️ 告警風暴合併**：自動偵測爆發性告警，將多筆通知合併為一通摘要電話，避免通訊塞車與維運人員疲勞。
+- **🎙️ 多重 TTS 備援**：整合 Edge-TTS (高品質雲端語音)、gTTS 與離線 pyttsx3，並具備靜態 WAV 降級機制，確保網路不穩時仍能響鈴。
+- **🔐 企業級安全性**：Webhook 支援 Bearer Token 驗證；WebGUI 使用 Session 控管並支援 SSL/TLS 自動化部署。
+- **📍 進階路由引擎**：可根據虛擬機名稱、資源標籤或告警層級，精確將通報路由至不同的維運群組。
+- **📊 全方位 WebGUI**：視覺化管理聯絡人、群組、路由規則，並提供即時通話日誌與路由測試器。
 
 ---
 
 ## 🏗️ 系統架構
 
 ```mermaid
-graph LR
+graph TD
     vROps[VMware vROps] -- Webhook (JSON) --> Flask[Webhook Server]
     subgraph Core Engine
-        Flask -- Queue --> TTL[TTL/Merge Logic]
-        TTL -- Text --> TTS[TTS Engine]
-        TTS -- WAV --> SIP[SIP Caller]
+        Flask -- Queue --> Consumer[Consumer Thread]
+        Consumer -- Dedup --> AlertMgr[Alert Manager]
+        AlertMgr -- Text --> TTS[TTS Engine]
+        TTS -- WAV --> Caller[SIP / Twilio Caller]
     end
-    SIP -- TLS/UDP --> EZUC["EZUC+ (SIP Server)"]
-    EZUC -- Call --> Staff[維運人員手機]
+    Caller -- Signaling --> PSTN["SIP Provider / Twilio"]
+    PSTN -- Call --> Staff[維運人員手機]
     
-    Database[(SQLite)] -- CRUD --> WebGUI[管理介面]
+    Database[(SQLite)] -- Persistence --> WebGUI[Management GUI]
     WebGUI -- Settings --> Core
 ```
 
@@ -42,51 +42,49 @@ graph LR
 
 ## 🚀 快速開始
 
-### 1. 安裝與設定
+### 1. 安裝與部署
 
 ```bash
 git clone https://github.com/nchiyi/vrops-alert-autocaller.git
 cd vrops-alert-autocaller
 
-# 方法一：Ubuntu 原生安裝（推薦，含自動化交互設定）
+# 執行互動式安裝腳本（推薦）
 sudo bash install.sh
-
-# 方法二：Docker 容器化安裝
-bash install.sh --docker
 ```
 
-安裝腳本會自動處理：
-- 系統依賴（ffmpeg, espeak-ng, pjsua2 編譯）。
-- Python 虛擬環境與套件安裝。
-- 產生 `settings.yaml` 與 `systemd` 服務檔。
+安裝腳本會引導您完成：
+- 系統環境檢查與依賴安裝（ffmpeg, pjsua2 等）。
+- 自訂管理員帳號與密碼。
+- 自動產生 `settings.yaml` 與 `systemd` 服務配置。
+- 選配 Nginx 反向代理與 Let's Encrypt SSL 憑證。
 
 ### 2. vROps Webhook 設定
 
-在 vROps 的 **Outbound Settings** 中建立新的 Webhook：
-- **URL**: `http://YOUR_SERVER_IP:5000/vrops-webhook`
+在 vROps 的 **Outbound Settings** 中建立 Webhook 插件：
+- **URL**: `https://YOUR_DOMAIN_OR_IP/vrops-webhook`
 - **Header**: `Authorization: Bearer YOUR_WEBHOOK_TOKEN`
 - **Method**: `POST`
 
 ---
 
-## ⚙️ 設定檔說明
+## ⚙️ 設定管理
 
-設定檔位於 `/opt/vrops-alert-caller/config/settings.yaml`。
+系統設定位於 `config/settings.yaml`，由於包含敏感資訊，該檔案不會被 Git 追蹤。
 
-| 參數區段 | 說明 |
+| 模組 | 說明 |
 | :--- | :--- |
-| `webhook` | 設定監聽 Port 與驗證 Token |
-| `tts` | 選擇語音引擎 (edge-tts/gtts) 與輸出的語音路徑 |
-| `sip` | EZUC+ 伺服器資訊與帳號密碼 |
-| `alert` | 設定去重視窗、重撥次數與風暴合併門檻 |
+| **Webhook** | 定義驗證 Token 與監聽端口 |
+| **SIP / Twilio** | 配置電信提供商憑證、伺服器資訊與傳輸協定 (TLS/UDP) |
+| **Alert** | 管理去重視窗、重試次數與升級機制 (Escalation) |
+| **WebGUI** | 管理介面權限與管理員帳號配置 |
 
 ---
 
 ## 🖥️ 管理介面 (WebGUI)
 
-預設登入網址：`http://YOUR_SERVER_IP:5000/`
-- **預設帳號**: `admin`
-- **預設密碼**: `changeme` (請務必於 settings.yaml 中修改)
+預設存取位址：`http://YOUR_SERVER_IP:5000/` (建議透過 Nginx 啟用 HTTPS)
+- **帳號密碼**: 於安裝階段 (install.sh) 自行設定。
+- **功能**: 即時儀表板、聯絡人管理、路由規則測試、通話歷史回放。
 
 ---
 
@@ -95,4 +93,4 @@ bash install.sh --docker
 本專案採用 [MIT License](LICENSE) 授權。
 
 ---
-*Developed with ❤️ for IT Operations.*
+*Developed with ❤️ for Modern IT Operations.*
