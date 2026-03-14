@@ -44,7 +44,9 @@
         <header>
             <h1>{% block page_title %}{% endblock %}</h1>
         </header>
-        {% block body %}{% endblock %}
+        <div class="page-body">
+            {% block body %}{% endblock %}
+        </div>
     </main>
 
     <div id="toast-container"></div>
