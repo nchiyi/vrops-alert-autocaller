@@ -240,6 +240,24 @@ def rule_create(name: str, match_field: str, match_pattern: str,
     return rid
 
 
+def rule_update(rule_id: int, **fields) -> bool:
+    """更新路由規則欄位（可部分更新）"""
+    conn = get_db()
+    allowed = {"name", "description", "match_field", "match_pattern",
+               "target_group_id", "priority", "enabled"}
+    updates = {k: v for k, v in fields.items() if k in allowed}
+    if not updates:
+        return False
+    set_clause = ", ".join(f"{k}=?" for k in updates)
+    conn.execute(
+        f"UPDATE routing_rules SET {set_clause} WHERE id=?",
+        (*updates.values(), rule_id)
+    )
+    conn.commit()
+    conn.close()
+    return True
+
+
 def rule_delete(rule_id: int) -> bool:
     conn = get_db()
     conn.execute("DELETE FROM routing_rules WHERE id=?", (rule_id,))

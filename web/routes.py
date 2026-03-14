@@ -324,11 +324,76 @@ def api_rules_create():
     return jsonify({"id": rid, "status": "created"}), 201
 
 
+@gui.route("/api/rules/<int:rid>", methods=["PUT"])
+@login_required
+def api_rules_update(rid):
+    """更新路由規則（支援部分欄位：enabled, priority, name, pattern 等）"""
+    data = request.get_json(silent=True) or {}
+    if "priority" in data:
+        try:
+            data["priority"] = int(data["priority"])
+        except (ValueError, TypeError):
+            pass
+    if "enabled" in data:
+        data["enabled"] = 1 if data["enabled"] else 0
+    if "target_group_id" in data:
+        try:
+            data["target_group_id"] = int(data["target_group_id"])
+        except (ValueError, TypeError):
+            pass
+    models.rule_update(rid, **data)
+    return jsonify({"status": "updated"})
+
+
 @gui.route("/api/rules/<int:rid>", methods=["DELETE"])
 @login_required
 def api_rules_delete(rid):
     models.rule_delete(rid)
     return jsonify({"status": "deleted"})
+
+
+@gui.route("/api/rules/test", methods=["POST"])
+@login_required
+def api_rules_test():
+    """
+    路由測試器：模擬告警資料，回傳第一條匹配規則與通知順序。
+    Body: { "resourceName": "...", "alertName": "...", "criticality": "..." }
+    """
+    import fnmatch as _fnmatch
+    data = request.get_json(silent=True) or {}
+
+    conn = models.get_db()
+    rules = conn.execute(
+        "SELECT r.*, g.name as group_name "
+        "FROM routing_rules r "
+        "JOIN contact_groups g ON r.target_group_id=g.id "
+        "WHERE r.enabled=1 ORDER BY r.priority"
+    ).fetchall()
+
+    matched_rule = None
+    for rule in rules:
+        field = rule["match_field"]
+        pattern = rule["match_pattern"]
+        value = data.get(field, "")
+        if _fnmatch.fnmatch(str(value), pattern):
+            matched_rule = dict(rule)
+            break
+
+    group_id = matched_rule["target_group_id"] if matched_rule else 1
+    matched_label = "matched" if matched_rule else "default"
+
+    contacts = conn.execute(
+        "SELECT name, number, priority FROM contacts "
+        "WHERE group_id=? AND enabled=1 ORDER BY priority",
+        (group_id,)
+    ).fetchall()
+
+    conn.close()
+    return jsonify({
+        "matched_rule": matched_rule,
+        "matched_label": matched_label,
+        "contacts": [dict(c) for c in contacts],
+    })
 
 
 # ============================

@@ -4,108 +4,573 @@
 {% block page_title %}告警路由規則{% endblock %}
 
 {% block body %}
-<div class="card">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-        <h3><i class="fas fa-route"></i> 路由規則（按優先序排列）</h3>
-        <button class="btn btn-primary" onclick="openModal('modal-add-rule')">
-            <i class="fas fa-plus"></i> 新增規則
-        </button>
-    </div>
 
-    {% if rules %}
-    <table>
-        <thead>
-            <tr>
-                <th>優先序</th>
-                <th>規則名稱</th>
-                <th>匹配欄位</th>
-                <th>匹配模式</th>
-                <th>通知群組</th>
-                <th>狀態</th>
-                <th>操作</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for rule in rules %}
-            <tr>
-                <td>{{ rule.priority }}</td>
-                <td>{{ rule.name }}</td>
-                <td><code>{{ rule.match_field }}</code></td>
-                <td><code>{{ rule.match_pattern }}</code></td>
-                <td>{{ rule.group_name }}</td>
-                <td>
-                    {% if rule.enabled %}
-                    <span class="badge badge-success">啟用</span>
-                    {% else %}
-                    <span class="badge badge-danger">停用</span>
-                    {% endif %}
-                </td>
-                <td>
-                    <button class="btn btn-danger btn-sm" onclick="deleteRule({{ rule.id }})">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    {% else %}
+<!-- ── Section 1: 路由規則表格 ── -->
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+    <div>
+      <h3 style="margin:0;"><i class="fas fa-route"></i> 路由規則</h3>
+      <p style="color:var(--text-secondary); font-size:13px; margin:4px 0 0;">
+        告警依優先序逐條匹配，<strong>第一條符合的規則生效</strong>。未匹配時通知「預設群組」。
+      </p>
+    </div>
+    <button class="btn btn-primary" onclick="openAddModal()">
+      <i class="fas fa-plus"></i> 新增規則
+    </button>
+  </div>
+  <div id="rules-container">
     <p style="color:var(--text-secondary); text-align:center; padding:32px;">
-        尚無路由規則。未設規則時，所有告警將通知「預設群組」。
+      <i class="fas fa-spinner fa-spin"></i> 載入中...
     </p>
-    {% endif %}
+  </div>
 </div>
 
+<!-- ── Section 2: 路由測試器 ── -->
 <div class="card">
-    <h3><i class="fas fa-info-circle"></i> 匹配規則說明</h3>
-    <table>
-        <thead>
-            <tr><th>matchField 可用值</th><th>說明</th><th>範例 pattern</th></tr>
-        </thead>
-        <tbody>
-            <tr><td><code>resourceName</code></td><td>VM/主機名稱</td><td><code>custA-*</code></td></tr>
-            <tr><td><code>alertName</code></td><td>告警類型名稱</td><td><code>*CPU*</code></td></tr>
-            <tr><td><code>criticality</code></td><td>嚴重等級</td><td><code>CRITICAL</code></td></tr>
-        </tbody>
-    </table>
+  <h3 style="margin-bottom:6px;"><i class="fas fa-flask" style="color:#f59e0b;"></i> 路由測試器</h3>
+  <p style="color:var(--text-secondary); font-size:13px; margin:0 0 16px;">
+    輸入告警資訊，即時預覽哪條規則會匹配、哪些人會被通知（依撥號優先順序）。
+  </p>
+  <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; align-items:end;">
+    <div class="form-group" style="margin:0;">
+      <label>VM / 主機名稱 <span style="color:var(--text-secondary); font-weight:400; font-size:12px;">(resourceName)</span></label>
+      <input id="test-resource" placeholder="例如：vm-custA-web-001" oninput="scheduleTest()">
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label>告警類型 <span style="color:var(--text-secondary); font-weight:400; font-size:12px;">(alertName)</span></label>
+      <input id="test-alert" placeholder="例如：CPU Utilization Workload" oninput="scheduleTest()">
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label>嚴重等級 <span style="color:var(--text-secondary); font-weight:400; font-size:12px;">(criticality)</span></label>
+      <select id="test-criticality" onchange="scheduleTest()">
+        <option value="">（任意）</option>
+        <option value="CRITICAL">CRITICAL</option>
+        <option value="IMMEDIATE">IMMEDIATE</option>
+        <option value="WARNING">WARNING</option>
+        <option value="INFORMATION">INFORMATION</option>
+      </select>
+    </div>
+  </div>
+  <div id="test-result" style="margin-top:16px; display:none;"></div>
+</div>
+
+<!-- ── Section 3: 快速新增規則 ── -->
+<div class="card">
+  <h3 style="margin-bottom:6px;"><i class="fas fa-magic" style="color:#8b5cf6;"></i> 快速新增規則</h3>
+  <p style="color:var(--text-secondary); font-size:13px; margin:0 0 16px;">
+    選擇範本一鍵建立常用規則，適合多租戶或多 VM 環境快速設定。
+  </p>
+
+  <div style="display:flex; gap:4px; margin-bottom:16px; border-bottom:1px solid var(--border);">
+    <button class="tmpl-tab active" onclick="switchTab('vm', this)"><i class="fas fa-server"></i> VM 前綴匹配</button>
+    <button class="tmpl-tab" onclick="switchTab('severity', this)"><i class="fas fa-exclamation-triangle"></i> 嚴重等級</button>
+    <button class="tmpl-tab" onclick="switchTab('alert', this)"><i class="fas fa-bell"></i> 告警類型關鍵字</button>
+  </div>
+
+  <div id="tmpl-vm" class="tmpl-panel">
+    <p style="color:var(--text-secondary); font-size:13px; margin:0 0 12px;">
+      將特定 VM 前綴的主機告警導向指定群組。例如 <code>custA-</code> 前綴的主機全部通知客戶A值班人員。
+    </p>
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr auto; gap:12px; align-items:end;">
+      <div class="form-group" style="margin:0;">
+        <label>規則名稱</label>
+        <input id="tmpl-vm-name" placeholder="例如：客戶A主機路由">
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label>VM 前綴</label>
+        <input id="tmpl-vm-prefix" placeholder="例如：custA-" oninput="previewVmPattern()">
+        <small id="tmpl-vm-preview" style="color:var(--text-secondary);"></small>
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label>通知群組</label>
+        <select id="tmpl-vm-group">
+          {% for g in groups %}<option value="{{ g.id }}">{{ g.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div><button class="btn btn-primary" onclick="quickAddVm()"><i class="fas fa-plus"></i> 新增</button></div>
+    </div>
+  </div>
+
+  <div id="tmpl-severity" class="tmpl-panel" style="display:none;">
+    <p style="color:var(--text-secondary); font-size:13px; margin:0 0 12px;">
+      依告警嚴重等級分流。例如 CRITICAL 通知緊急待命組，WARNING 通知一般維運組。
+    </p>
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr auto; gap:12px; align-items:end;">
+      <div class="form-group" style="margin:0;">
+        <label>規則名稱</label>
+        <input id="tmpl-sev-name" placeholder="例如：緊急告警升級">
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label>嚴重等級</label>
+        <select id="tmpl-sev-level">
+          <option value="CRITICAL">CRITICAL（緊急）</option>
+          <option value="IMMEDIATE">IMMEDIATE（立即）</option>
+          <option value="WARNING">WARNING（警告）</option>
+          <option value="INFORMATION">INFORMATION（資訊）</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label>通知群組</label>
+        <select id="tmpl-sev-group">
+          {% for g in groups %}<option value="{{ g.id }}">{{ g.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div><button class="btn btn-primary" onclick="quickAddSeverity()"><i class="fas fa-plus"></i> 新增</button></div>
+    </div>
+  </div>
+
+  <div id="tmpl-alert" class="tmpl-panel" style="display:none;">
+    <p style="color:var(--text-secondary); font-size:13px; margin:0 0 12px;">
+      依告警類型名稱中的關鍵字分流。例如 <code>CPU</code> 相關告警通知效能維運組。
+    </p>
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr auto; gap:12px; align-items:end;">
+      <div class="form-group" style="margin:0;">
+        <label>規則名稱</label>
+        <input id="tmpl-alt-name" placeholder="例如：CPU告警路由">
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label>告警類型關鍵字</label>
+        <input id="tmpl-alt-keyword" placeholder="例如：CPU" oninput="previewAltPattern()">
+        <small id="tmpl-alt-preview" style="color:var(--text-secondary);"></small>
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label>通知群組</label>
+        <select id="tmpl-alt-group">
+          {% for g in groups %}<option value="{{ g.id }}">{{ g.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div><button class="btn btn-primary" onclick="quickAddAlert()"><i class="fas fa-plus"></i> 新增</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Section 4: 說明 ── -->
+<div class="card">
+  <h3><i class="fas fa-info-circle"></i> 匹配規則說明</h3>
+  <table>
+    <thead>
+      <tr><th>matchField</th><th>說明</th><th>範例 pattern</th><th>匹配範圍</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>resourceName</code></td><td>VM / 主機名稱</td><td><code>custA-*</code></td><td>custA- 開頭的所有主機</td></tr>
+      <tr><td><code>resourceName</code></td><td>VM / 主機名稱</td><td><code>*-prod-*</code></td><td>名稱含 -prod- 的主機</td></tr>
+      <tr><td><code>alertName</code></td><td>告警類型名稱</td><td><code>*CPU*</code></td><td>告警名稱含 CPU</td></tr>
+      <tr><td><code>criticality</code></td><td>嚴重等級</td><td><code>CRITICAL</code></td><td>精確匹配等級字串</td></tr>
+    </tbody>
+  </table>
+  <p style="color:var(--text-secondary); font-size:13px; margin-top:12px;">
+    <strong>萬用字元：</strong>
+    <code>*</code> 任意字元、<code>?</code> 單一字元、<code>[abc]</code> 字元集合。
+    底層使用 Python <code>fnmatch</code>，大小寫敏感。
+  </p>
 </div>
 
 <!-- Modal: 新增規則 -->
-<div class="modal-overlay" id="modal-add-rule">
-    <div class="modal">
-        <h2>新增路由規則</h2>
-        <div class="form-group">
-            <label>規則名稱</label>
-            <input id="rule-name" placeholder="例如: 客戶A告警">
-        </div>
-        <div class="form-group">
-            <label>匹配欄位</label>
-            <select id="rule-match-field">
-                <option value="resourceName">resourceName（主機名稱）</option>
-                <option value="alertName">alertName（告警類型）</option>
-                <option value="criticality">criticality（嚴重度）</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label>匹配模式（支援 * ? 萬用字元）</label>
-            <input id="rule-match-pattern" placeholder="例如: custA-* 或 *CPU*">
-        </div>
-        <div class="form-group">
-            <label>通知群組</label>
-            <select id="rule-target-group">
-                {% for g in groups %}
-                <option value="{{ g.id }}">{{ g.name }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div class="form-group">
-            <label>優先序（數字小優先）</label>
-            <input id="rule-priority" type="number" value="1" min="1">
-        </div>
-        <div class="modal-actions">
-            <button class="btn" onclick="closeModal()" style="background:var(--bg-hover);">取消</button>
-            <button class="btn btn-primary" onclick="addRule()">確認新增</button>
-        </div>
+<div class="modal-overlay" id="modal-add-rule" onclick="closeIfOverlay(event,'modal-add-rule')">
+  <div class="modal" style="max-width:520px;">
+    <h2><i class="fas fa-plus-circle"></i> 新增路由規則</h2>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 16px;">
+      <div class="form-group" style="grid-column:1/-1;">
+        <label>規則名稱 <span style="color:#ef4444;">*</span></label>
+        <input id="add-name" placeholder="例如：客戶A主機">
+      </div>
+      <div class="form-group">
+        <label>匹配欄位</label>
+        <select id="add-match-field">
+          <option value="resourceName">resourceName（主機名稱）</option>
+          <option value="alertName">alertName（告警類型）</option>
+          <option value="criticality">criticality（嚴重等級）</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>匹配模式（支援 * ? 萬用字元）</label>
+        <input id="add-match-pattern" placeholder="例如：custA-* 或 CRITICAL">
+      </div>
+      <div class="form-group">
+        <label>通知群組</label>
+        <select id="add-target-group">
+          {% for g in groups %}<option value="{{ g.id }}">{{ g.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>優先序（數字小 = 先匹配）</label>
+        <input id="add-priority" type="number" value="10" min="1">
+      </div>
+      <div class="form-group" style="grid-column:1/-1;">
+        <label>說明（選填）</label>
+        <input id="add-description" placeholder="例如：客戶A所有主機告警路由">
+      </div>
     </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('modal-add-rule')" style="background:var(--bg-hover);">取消</button>
+      <button class="btn btn-primary" onclick="submitAddRule()"><i class="fas fa-check"></i> 確認新增</button>
+    </div>
+  </div>
 </div>
+
+<!-- Modal: 編輯規則 -->
+<div class="modal-overlay" id="modal-edit-rule" onclick="closeIfOverlay(event,'modal-edit-rule')">
+  <div class="modal" style="max-width:520px;">
+    <h2><i class="fas fa-edit"></i> 編輯路由規則</h2>
+    <input type="hidden" id="edit-rule-id">
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 16px;">
+      <div class="form-group" style="grid-column:1/-1;">
+        <label>規則名稱 <span style="color:#ef4444;">*</span></label>
+        <input id="edit-name">
+      </div>
+      <div class="form-group">
+        <label>匹配欄位</label>
+        <select id="edit-match-field">
+          <option value="resourceName">resourceName（主機名稱）</option>
+          <option value="alertName">alertName（告警類型）</option>
+          <option value="criticality">criticality（嚴重等級）</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>匹配模式</label>
+        <input id="edit-match-pattern">
+      </div>
+      <div class="form-group">
+        <label>通知群組</label>
+        <select id="edit-target-group">
+          {% for g in groups %}<option value="{{ g.id }}">{{ g.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>優先序</label>
+        <input id="edit-priority" type="number" min="1">
+      </div>
+      <div class="form-group" style="grid-column:1/-1;">
+        <label>說明</label>
+        <input id="edit-description">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('modal-edit-rule')" style="background:var(--bg-hover);">取消</button>
+      <button class="btn btn-primary" onclick="submitEditRule()"><i class="fas fa-check"></i> 儲存變更</button>
+    </div>
+  </div>
+</div>
+
+<style>
+.tmpl-tab {
+  background: none; border: none; border-bottom: 3px solid transparent;
+  padding: 8px 16px; margin-bottom: -1px;
+  color: var(--text-secondary); cursor: pointer;
+  font-size: 13px; font-weight: 500;
+  transition: color .15s, border-color .15s;
+}
+.tmpl-tab:hover { color: var(--accent); }
+.tmpl-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+.rule-row {
+  display: grid;
+  grid-template-columns: 44px 1fr 180px 150px 56px 80px;
+  align-items: center; gap: 12px;
+  padding: 10px 14px; border-radius: 8px;
+  border: 1px solid var(--border); margin-bottom: 6px;
+  background: var(--bg-card); transition: background .15s;
+}
+.rule-row:hover { background: var(--bg-hover); }
+.rule-row.rule-off { opacity: .45; }
+
+.pri-badge {
+  width: 34px; height: 34px; border-radius: 50%;
+  background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; flex-shrink: 0;
+}
+.pri-badge.off { background: #4b5563; }
+
+.rule-name-col { min-width: 0; }
+.rname { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rdesc { color: var(--text-secondary); font-size: 12px; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rmove { display: flex; gap: 2px; margin-top: 4px; }
+.rmove button { background: none; border: none; color: var(--text-secondary); cursor: pointer;
+  padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+.rmove button:hover:not(:disabled) { color: var(--accent); }
+.rmove button:disabled { opacity: .3; cursor: default; }
+
+.rule-cond .cfield { color: var(--text-secondary); font-size: 12px; }
+.rule-cond code { background: var(--bg-hover); padding: 2px 6px; border-radius: 4px; font-size: 12px; word-break: break-all; }
+
+.rule-grp { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.toggle-sw { position: relative; width: 42px; height: 24px; display: inline-block; cursor: pointer; }
+.toggle-sw input { display: none; }
+.toggle-track { position: absolute; inset: 0; background: #4b5563; border-radius: 24px; transition: .2s; }
+.toggle-track::before { content: ''; position: absolute; width: 18px; height: 18px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .2s; }
+.toggle-sw input:checked + .toggle-track { background: var(--accent); }
+.toggle-sw input:checked + .toggle-track::before { left: 21px; }
+
+.rule-acts { display: flex; gap: 5px; justify-content: flex-end; }
+
+.test-box { background: var(--bg-hover); border-radius: 10px; padding: 16px; border-left: 4px solid var(--accent); }
+.test-box.no-match { border-left-color: #6b7280; }
+.test-lbl { font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
+.test-box.no-match .test-lbl { color: #6b7280; }
+.test-detail { font-size: 13px; line-height: 1.8; margin-bottom: 10px; }
+.contact-chip { display: inline-flex; align-items: center; gap: 6px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 20px; padding: 4px 10px 4px 6px; font-size: 13px; margin: 4px 4px 0 0; }
+.chip-idx { width: 20px; height: 20px; background: var(--accent); color: #fff; border-radius: 50%; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+</style>
+
+{% block scripts %}
+<script>
+/* 所有 innerHTML 插入的文字均通過 esc() 函數進行 HTML entity 轉義，防止 XSS */
+let _rules = [], _timer = null;
+
+document.addEventListener('DOMContentLoaded', loadRules);
+
+/* ── 載入規則 ── */
+async function loadRules() {
+  _rules = await apiFetch('GET', '/api/rules');
+  renderRules();
+}
+
+function renderRules() {
+  const el = document.getElementById('rules-container');
+  if (!_rules || !_rules.length) {
+    el.textContent = '';
+    const p = document.createElement('p');
+    p.style.cssText = 'color:var(--text-secondary);text-align:center;padding:40px 0;';
+    p.textContent = '尚無路由規則。所有告警將通知「預設群組」。';
+    el.appendChild(p);
+    return;
+  }
+  /* 表頭 */
+  const hdr = '<div style="display:grid;grid-template-columns:44px 1fr 180px 150px 56px 80px;gap:12px;padding:6px 14px 10px;color:var(--text-secondary);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;"><span>順序</span><span>規則名稱</span><span>匹配條件</span><span>通知群組</span><span>啟用</span><span style=text-align:right>操作</span></div>';
+  /* 每列（user data 全用 esc() 轉義） */
+  const rows = _rules.map((r, i) => {
+    const first = i === 0, last = i === _rules.length - 1;
+    const dis = r.enabled ? '' : ' rule-off';
+    const bCls = r.enabled ? '' : ' off';
+    return '<div class="rule-row' + dis + '" id="rrow-' + r.id + '">'
+      + '<div><div class="pri-badge' + bCls + '">' + r.priority + '</div></div>'
+      + '<div class="rule-name-col">'
+        + '<div class="rname" title="' + esc(r.name) + '">' + esc(r.name) + '</div>'
+        + (r.description ? '<div class="rdesc" title="' + esc(r.description) + '">' + esc(r.description) + '</div>' : '')
+        + '<div class="rmove">'
+          + '<button onclick="movePri(' + r.id + ',\'up\')" title="提升優先序"' + (first ? ' disabled' : '') + '><i class="fas fa-arrow-up"></i></button>'
+          + '<button onclick="movePri(' + r.id + ',\'down\')" title="降低優先序"' + (last ? ' disabled' : '') + '><i class="fas fa-arrow-down"></i></button>'
+        + '</div>'
+      + '</div>'
+      + '<div class="rule-cond"><div class="cfield">' + esc(r.match_field) + '</div><code>' + esc(r.match_pattern) + '</code></div>'
+      + '<div class="rule-grp" title="' + esc(r.group_name) + '">' + esc(r.group_name) + '</div>'
+      + '<div><label class="toggle-sw" title="' + (r.enabled ? '點擊停用' : '點擊啟用') + '">'
+        + '<input type="checkbox"' + (r.enabled ? ' checked' : '') + ' onchange="toggleRule(' + r.id + ',this.checked)">'
+        + '<span class="toggle-track"></span></label></div>'
+      + '<div class="rule-acts">'
+        + '<button class="btn btn-sm" style="background:var(--bg-hover)" onclick="openEditModal(' + r.id + ')" title="編輯"><i class="fas fa-edit"></i></button>'
+        + '<button class="btn btn-danger btn-sm" onclick="delRule(' + r.id + ')" title="刪除"><i class="fas fa-trash"></i></button>'
+      + '</div></div>';
+  }).join('');
+  el.innerHTML = hdr + rows;
+}
+
+/* ── 啟用/停用 ── */
+async function toggleRule(id, enabled) {
+  await apiFetch('PUT', '/api/rules/' + id, { enabled });
+  await loadRules();
+}
+
+/* ── 優先序移動 ── */
+async function movePri(id, dir) {
+  const idx = _rules.findIndex(r => r.id === id);
+  if (idx < 0) return;
+  const si = dir === 'up' ? idx - 1 : idx + 1;
+  if (si < 0 || si >= _rules.length) return;
+  const a = _rules[idx], b = _rules[si];
+  const pa = a.priority, pb = b.priority;
+  const newA = pa !== pb ? pb : (dir === 'up' ? pa - 1 : pa + 1);
+  const newB = pa !== pb ? pa : (dir === 'up' ? pb + 1 : pb - 1);
+  await Promise.all([
+    apiFetch('PUT', '/api/rules/' + a.id, { priority: newA }),
+    apiFetch('PUT', '/api/rules/' + b.id, { priority: newB }),
+  ]);
+  await loadRules();
+}
+
+/* ── 刪除 ── */
+async function delRule(id) {
+  const r = _rules.find(x => x.id === id);
+  if (!confirm('確定刪除規則「' + (r ? r.name : id) + '」？')) return;
+  await apiFetch('DELETE', '/api/rules/' + id);
+  await loadRules();
+}
+
+/* ── 新增 Modal ── */
+function openAddModal() {
+  const nextP = _rules.length ? Math.max(..._rules.map(r => r.priority)) + 10 : 10;
+  setVals({ 'add-name':'','add-match-field':'resourceName','add-match-pattern':'','add-priority':nextP,'add-description':'' });
+  openModal('modal-add-rule');
+}
+async function submitAddRule() {
+  const name = gv('add-name').trim(), pat = gv('add-match-pattern').trim();
+  if (!name || !pat) { alert('規則名稱與匹配模式不能為空'); return; }
+  await apiFetch('POST', '/api/rules', { name, match_field: gv('add-match-field'), match_pattern: pat,
+    target_group_id: parseInt(gv('add-target-group')), priority: parseInt(gv('add-priority')) || 10,
+    description: gv('add-description').trim() });
+  closeModal('modal-add-rule');
+  await loadRules();
+}
+
+/* ── 編輯 Modal ── */
+function openEditModal(id) {
+  const r = _rules.find(x => x.id === id);
+  if (!r) return;
+  document.getElementById('edit-rule-id').value = id;
+  setVals({ 'edit-name':r.name, 'edit-match-field':r.match_field,
+            'edit-match-pattern':r.match_pattern, 'edit-priority':r.priority,
+            'edit-description':r.description || '' });
+  const sel = document.getElementById('edit-target-group');
+  Array.from(sel.options).forEach(o => { o.selected = parseInt(o.value) === r.target_group_id; });
+  openModal('modal-edit-rule');
+}
+async function submitEditRule() {
+  const id = document.getElementById('edit-rule-id').value;
+  const name = gv('edit-name').trim(), pat = gv('edit-match-pattern').trim();
+  if (!name || !pat) { alert('規則名稱與匹配模式不能為空'); return; }
+  await apiFetch('PUT', '/api/rules/' + id, { name, match_field: gv('edit-match-field'), match_pattern: pat,
+    target_group_id: parseInt(gv('edit-target-group')), priority: parseInt(gv('edit-priority')) || 1,
+    description: gv('edit-description').trim() });
+  closeModal('modal-edit-rule');
+  await loadRules();
+}
+
+/* ── 路由測試器 ── */
+function scheduleTest() {
+  clearTimeout(_timer);
+  if (!gv('test-resource') && !gv('test-alert') && !gv('test-criticality')) {
+    document.getElementById('test-result').style.display = 'none';
+    return;
+  }
+  _timer = setTimeout(runTest, 350);
+}
+async function runTest() {
+  const data = await apiFetch('POST', '/api/rules/test', {
+    resourceName: gv('test-resource'), alertName: gv('test-alert'), criticality: gv('test-criticality')
+  });
+  renderTestResult(data);
+}
+function renderTestResult(d) {
+  const el = document.getElementById('test-result');
+  const rule = d.matched_rule;
+  const isDefault = d.matched_label === 'default';
+
+  /* 使用 DOM 操作，user data 用 textContent 設定 */
+  const box = document.createElement('div');
+  box.className = 'test-box' + (isDefault ? ' no-match' : '');
+
+  const lbl = document.createElement('div');
+  lbl.className = 'test-lbl';
+  lbl.textContent = isDefault ? '⬇ 無匹配 → 預設群組' : '✓ 規則匹配成功';
+  box.appendChild(lbl);
+
+  const detail = document.createElement('div');
+  detail.className = 'test-detail';
+  if (rule) {
+    detail.innerHTML = '匹配規則：<strong>' + esc(rule.name) + '</strong>（優先序 ' + rule.priority + '）<br>'
+      + '條件：<code>' + esc(rule.match_field) + '</code> 符合 <code>' + esc(rule.match_pattern) + '</code><br>'
+      + '通知群組：<strong>' + esc(rule.group_name) + '</strong>';
+  } else {
+    detail.textContent = '無匹配規則，將使用預設群組（Group ID = 1）';
+  }
+  box.appendChild(detail);
+
+  const lbl2 = document.createElement('div');
+  lbl2.style.cssText = 'font-size:13px;color:var(--text-secondary);margin-bottom:6px;';
+  lbl2.textContent = '撥號順序（priority 小 → 先撥）：';
+  box.appendChild(lbl2);
+
+  const chips = document.createElement('div');
+  if (d.contacts && d.contacts.length) {
+    d.contacts.forEach((c, i) => {
+      const chip = document.createElement('div');
+      chip.className = 'contact-chip';
+      const idx = document.createElement('div');
+      idx.className = 'chip-idx';
+      idx.textContent = i + 1;
+      const nm = document.createElement('span');
+      nm.textContent = c.name;
+      const num = document.createElement('span');
+      num.style.cssText = 'color:var(--text-secondary);font-size:12px;';
+      num.textContent = c.number;
+      chip.appendChild(idx); chip.appendChild(nm); chip.appendChild(num);
+      chips.appendChild(chip);
+    });
+  } else {
+    const warn = document.createElement('span');
+    warn.style.cssText = 'color:#ef4444;font-size:13px;';
+    warn.textContent = '⚠ 此群組沒有啟用的聯絡人！請前往「聯絡人」頁面新增。';
+    chips.appendChild(warn);
+  }
+  box.appendChild(chips);
+
+  el.textContent = '';
+  el.appendChild(box);
+  el.style.display = 'block';
+}
+
+/* ── 快速範本 ── */
+function switchTab(id, btn) {
+  document.querySelectorAll('.tmpl-panel').forEach(p => p.style.display = 'none');
+  document.querySelectorAll('.tmpl-tab').forEach(b => b.classList.remove('active'));
+  document.getElementById('tmpl-' + id).style.display = '';
+  btn.classList.add('active');
+}
+function previewVmPattern() {
+  const p = gv('tmpl-vm-prefix');
+  document.getElementById('tmpl-vm-preview').textContent = p ? '→ pattern：' + p + '*' : '';
+}
+function previewAltPattern() {
+  const k = gv('tmpl-alt-keyword');
+  document.getElementById('tmpl-alt-preview').textContent = k ? '→ pattern：*' + k + '*' : '';
+}
+async function quickAddVm() {
+  const name = gv('tmpl-vm-name').trim(), prefix = gv('tmpl-vm-prefix').trim();
+  if (!name || !prefix) { alert('請填入規則名稱與 VM 前綴'); return; }
+  await apiFetch('POST', '/api/rules', { name, match_field:'resourceName',
+    match_pattern: prefix + '*', target_group_id: parseInt(gv('tmpl-vm-group')), priority: nextP() });
+  setVals({'tmpl-vm-name':'','tmpl-vm-prefix':''});
+  document.getElementById('tmpl-vm-preview').textContent = '';
+  await loadRules();
+}
+async function quickAddSeverity() {
+  const name = gv('tmpl-sev-name').trim();
+  if (!name) { alert('請填入規則名稱'); return; }
+  await apiFetch('POST', '/api/rules', { name, match_field:'criticality',
+    match_pattern: gv('tmpl-sev-level'), target_group_id: parseInt(gv('tmpl-sev-group')), priority: nextP() });
+  setVals({'tmpl-sev-name':''});
+  await loadRules();
+}
+async function quickAddAlert() {
+  const name = gv('tmpl-alt-name').trim(), kw = gv('tmpl-alt-keyword').trim();
+  if (!name || !kw) { alert('請填入規則名稱與告警關鍵字'); return; }
+  await apiFetch('POST', '/api/rules', { name, match_field:'alertName',
+    match_pattern: '*' + kw + '*', target_group_id: parseInt(gv('tmpl-alt-group')), priority: nextP() });
+  setVals({'tmpl-alt-name':'','tmpl-alt-keyword':''});
+  document.getElementById('tmpl-alt-preview').textContent = '';
+  await loadRules();
+}
+function nextP() { return _rules.length ? Math.max(..._rules.map(r => r.priority)) + 10 : 10; }
+
+/* ── Modal helpers ── */
+function openModal(id)  { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+function closeIfOverlay(e, id) { if (e.target.id === id) closeModal(id); }
+
+/* ── Util ── */
+function gv(id) { const e = document.getElementById(id); return e ? e.value : ''; }
+function setVals(o) { for (const [k,v] of Object.entries(o)) { const e = document.getElementById(k); if (e) e.value = v; } }
+/* esc: 轉義 HTML 特殊字元，防止 XSS（所有動態內容插入前必須通過此函數） */
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+async function apiFetch(method, url, body) {
+  const opt = { method, headers: {'Content-Type':'application/json'} };
+  if (body) opt.body = JSON.stringify(body);
+  const r = await fetch(url, opt);
+  try { return await r.json(); } catch { return {}; }
+}
+</script>
+{% endblock %}
+
 {% endblock %}
