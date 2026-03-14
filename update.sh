@@ -11,6 +11,8 @@ SERVICE="vrops-alert-caller"
 VENV="$DIR/venv/bin"
 
 echo "=== [1/4] 拉取最新程式碼 ==="
+# 捨棄受追蹤檔案的本地修改（settings.yaml 在 .gitignore 中，不受影響）
+git -C "$DIR" checkout -- . 2>/dev/null || true
 git -C "$DIR" pull origin main
 
 echo "=== [2/4] 修正檔案權限 ==="
