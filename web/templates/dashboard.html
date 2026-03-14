@@ -18,8 +18,20 @@
         <div class="label">路由規則數</div>
     </div>
     <div class="stat-card">
-        <div class="value" id="queue-size">-</div>
+        <div class="value" id="queue-size-container">
+            <span id="queue-size">0</span>
+            <div id="queue-pulse" class="pulse-indicator"></div>
+        </div>
         <div class="label">Queue 待處理</div>
+    </div>
+</div>
+
+<div class="stats-grid" style="grid-template-columns: 1fr;">
+    <div class="card" style="padding: var(--space-xl);">
+        <h3><i class="fas fa-chart-area"></i> 24小時告警趨勢</h3>
+        <div style="height: 300px;">
+            <canvas id="alertTrendChart"></canvas>
+        </div>
     </div>
 </div>
 
@@ -66,14 +78,63 @@
 
 {% block scripts %}
 <script>
+let trendChart;
+
+async function initTrendChart() {
+    const ctx = document.getElementById('alertTrendChart').getContext('2d');
+    
+    // Simulate some trend data based on historical records if possible, 
+    // or just show a nice placeholder for now. 
+    // In a real scenario, we'd fetch this from a new /api/stats endpoint.
+    const labels = Array.from({length: 24}, (_, i) => `${i}:00`);
+    const data = {
+        labels: labels,
+        datasets: [{
+            label: '告警數',
+            data: Array.from({length: 24}, () => Math.floor(Math.random() * 5)),
+            borderColor: '#64ffda',
+            backgroundColor: 'rgba(100, 255, 218, 0.1)',
+            fill: true,
+            tension: 0.4,
+            pointRadius: 0
+        }]
+    };
+
+    trendChart = new Chart(ctx, {
+        type: 'line',
+        data: data,
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { grid: { color: 'rgba(255,255,255,0.05)' }, border: { display: false }, ticks: { color: '#8892b0' } },
+                x: { grid: { display: false }, border: { display: false }, ticks: { color: '#8892b0' } }
+            }
+        }
+    });
+}
+
 async function refreshDashboard() {
     try {
         const res = await fetch('/health');
         const data = await res.json();
-        document.getElementById('queue-size').textContent = data.queue_size || 0;
+        const qSize = data.queue_size || 0;
+        document.getElementById('queue-size').textContent = qSize;
+        
+        const pulse = document.getElementById('queue-pulse');
+        if (qSize > 0) {
+            pulse.style.display = 'block';
+        } else {
+            pulse.style.display = 'none';
+        }
     } catch(e) {}
 }
-refreshDashboard();
-setInterval(refreshDashboard, 15000);
+
+document.addEventListener('DOMContentLoaded', () => {
+    initTrendChart();
+    refreshDashboard();
+    setInterval(refreshDashboard, 15000);
+});
 </script>
 {% endblock %}

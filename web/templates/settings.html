@@ -4,6 +4,15 @@
 {% block page_title %}系統設定{% endblock %}
 
 {% block body %}
+<div class="tabs-container">
+    <div class="settings-tabs">
+        <button class="tab-btn active" onclick="showSettingsTab('backend')"><i class="fas fa-exchange-alt"></i> 外撥後端</button>
+        <button class="tab-btn" onclick="showSettingsTab('connectivity')"><i class="fas fa-plug"></i> 連線詳細設定</button>
+        <button class="tab-btn" onclick="showSettingsTab('security')"><i class="fas fa-shield-alt"></i> 安全性與帳號</button>
+    </div>
+</div>
+
+<div id="tab-backend" class="settings-panel active">
 
 <!-- ── 外撥後端選擇 ───────────────────────────── -->
 <div class="card">
@@ -25,6 +34,9 @@
   <input type="checkbox" id="twilio-enabled" style="display:none;"
          {% if cfg.get('twilio',{}).get('enabled', False) %}checked{% endif %}>
 </div>
+</div><!-- End tab-backend -->
+
+<div id="tab-connectivity" class="settings-panel">
 
 <!-- ── SIP 設定 ──────────────────────────────── -->
 <div class="card" id="card-sip">
@@ -327,6 +339,9 @@
     <span>測試撥號會實際撥打電話並產生費用（SIP 分鐘數 / Twilio 通話費）。撥號可能需要 10～30 秒才會接通。</span>
   </div>
 </div>
+</div><!-- End tab-connectivity -->
+
+<div id="tab-security" class="settings-panel">
 
 <!-- ── 帳號密碼管理 ─────────────────────────── -->
 <div class="card">
@@ -396,18 +411,30 @@
   </div>
 </div>
 
-<!-- ── 儲存按鈕 ──────────────────────────────── -->
-<div style="display:flex; justify-content:flex-end; align-items:center; gap:16px; margin-top:8px;">
-  <span id="save-status" style="color:var(--text-secondary); font-size:0.9em;"></span>
-  <button class="btn btn-primary" onclick="saveSettings()" style="padding:10px 32px;">
-    <i class="fas fa-save"></i> 儲存設定
-  </button>
+</div><!-- End tab-security -->
+
+<div class="card glass-card" style="margin-top: var(--space-xl); position: sticky; bottom: var(--space-lg); z-index: 10;">
+  <div style="display:flex; justify-content:flex-end; align-items:center; gap:16px;">
+    <span id="save-status" style="color:var(--text-secondary); font-size:0.9em;"></span>
+    <button class="btn btn-primary" onclick="saveSettings()" style="padding:10px 32px;">
+      <i class="fas fa-save"></i> 儲存所有設定
+    </button>
+  </div>
 </div>
 
 {% endblock %}
 
 {% block scripts %}
 <script>
+// ── 切換伺服器設定 Tab ──────────────────────────
+function showSettingsTab(tabId) {
+  document.querySelectorAll('.settings-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  
+  document.getElementById('tab-' + tabId).classList.add('active');
+  event.currentTarget.classList.add('active');
+}
+
 // ── 初始化：根據目前設定決定啟用哪個後端 ─────────
 var _currentBackend = document.getElementById('twilio-enabled').checked ? 'twilio' : 'sip';
 selectBackend(_currentBackend, true);

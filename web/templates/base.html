@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="{{ url_for('gui.static', filename='css/style.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <nav class="sidebar">
@@ -46,7 +47,26 @@
         {% block body %}{% endblock %}
     </main>
 
+    <div id="toast-container"></div>
+
     <script src="{{ url_for('gui.static', filename='js/app.js') }}"></script>
+    <script>
+    function showToast(message, isError = false) {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        toast.className = `toast ${isError ? 'error' : ''}`;
+        toast.innerHTML = `
+            <i class="fas ${isError ? 'fa-exclamation-circle' : 'fa-check-circle'}"></i>
+            <span>${message}</span>
+        `;
+        container.appendChild(toast);
+        setTimeout(() => toast.classList.add('show'), 100);
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => toast.remove(), 300);
+        }, 4000);
+    }
+    </script>
     {% block scripts %}{% endblock %}
 </body>
 </html>
