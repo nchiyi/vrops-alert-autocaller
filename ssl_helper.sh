@@ -187,15 +187,16 @@ NGINX_CONF
 
         # 優先查 Let's Encrypt
         if [[ -n "$domain" && -f "/etc/letsencrypt/live/$domain/cert.pem" ]]; then
+            # 用 || true 防止 set -e 在 openssl/cut 意外失敗時靜默退出
             expiry=$(openssl x509 -enddate -noout \
                 -in "/etc/letsencrypt/live/$domain/cert.pem" 2>/dev/null \
-                | cut -d= -f2)
-            echo "LE $expiry"
+                | cut -d= -f2) || true
+            echo "LE ${expiry:-unknown}"
         elif [[ -f "$SSL_DIR/fullchain.pem" ]]; then
             expiry=$(openssl x509 -enddate -noout \
                 -in "$SSL_DIR/fullchain.pem" 2>/dev/null \
-                | cut -d= -f2)
-            echo "CUSTOM $expiry"
+                | cut -d= -f2) || true
+            echo "CUSTOM ${expiry:-unknown}"
         else
             echo "NONE"
         fi
@@ -203,10 +204,16 @@ NGINX_CONF
 
     nginx-status)
         # ── nginx 運作狀態 ─────────────────────────────
-        if systemctl is-active --quiet nginx 2>/dev/null; then
+        # 用 command -v 先確認 systemctl 存在，避免在容器環境爆炸
+        if command -v systemctl &>/dev/null && systemctl is-active --quiet nginx 2>/dev/null; then
             echo "RUNNING"
         else
-            echo "STOPPED"
+            # 次要檢查：直接看 nginx 進程是否存在（適用於無 systemd 環境）
+            if pgrep -x nginx &>/dev/null; then
+                echo "RUNNING"
+            else
+                echo "STOPPED"
+            fi
         fi
         ;;
 

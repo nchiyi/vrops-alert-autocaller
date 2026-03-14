@@ -617,9 +617,11 @@ def _run_ssl_helper(*args, timeout: int = 120):
 def api_ssl_status():
     """回傳 nginx / SSL 憑證狀態"""
     cfg = _read_yaml()
-    # 從 public_base_url 解析域名
+    # 從 public_base_url 解析域名（SIP 模式下可能未設定，回退讀 nginx.domain）
     base_url = cfg.get("twilio", {}).get("public_base_url", "")
-    domain = base_url.replace("https://", "").replace("http://", "").split("/")[0]
+    domain = base_url.replace("https://", "").replace("http://", "").split("/")[0].split(":")[0]
+    if not domain:
+        domain = cfg.get("nginx", {}).get("domain", "")
 
     # nginx 是否執行中
     nginx_running = False
@@ -692,9 +694,11 @@ def api_ssl_certbot():
                 "message": f"nginx 設定失敗：\n{err or out}"
             }), 500
 
-        # Step 4: 更新 public_base_url
+        # Step 4: 更新 public_base_url 與 nginx.domain（兩個都寫，api_ssl_status 任一都能讀到）
         original = _read_yaml()
         original.setdefault("twilio", {})["public_base_url"] = f"https://{domain}"
+        original.setdefault("nginx", {})["domain"] = domain
+        original.setdefault("nginx", {})["enabled"] = True
         _write_yaml(original)
 
         return jsonify({
@@ -761,10 +765,12 @@ def api_ssl_upload():
     except Exception as e:
         return jsonify({"ok": False, "message": f"nginx 設定失敗：{e}"}), 500
 
-    # 更新 public_base_url
+    # 更新 public_base_url 與 nginx.domain
     if domain:
         original = _read_yaml()
         original.setdefault("twilio", {})["public_base_url"] = f"https://{domain}"
+        original.setdefault("nginx", {})["domain"] = domain
+        original.setdefault("nginx", {})["enabled"] = True
         _write_yaml(original)
 
     return jsonify({
