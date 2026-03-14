@@ -788,3 +788,77 @@ def api_ssl_install_nginx():
         return jsonify({"ok": False, "message": "安裝逾時"}), 500
     except Exception as e:
         return jsonify({"ok": False, "message": f"安裝失敗：{e}"}), 500
+
+
+# ============================
+# REST API — 帳號密碼管理
+# ============================
+
+@gui.route("/api/auth/password", methods=["PUT"])
+@login_required
+def api_change_password():
+    """
+    修改登入帳號或密碼（需先驗證目前密碼）。
+    Body: {
+        "current_password": "目前密碼（必填）",
+        "new_username":     "新帳號（選填，留空則不變）",
+        "new_password":     "新密碼（選填，留空則不變，至少 6 字元）"
+    }
+    成功後寫入 settings.yaml 並觸發服務 SIGHUP reload，
+    前端應在收到 need_relogin=true 後導向 /logout 讓用戶重新登入。
+    """
+    data = request.get_json(silent=True) or {}
+    current_password = data.get("current_password", "")
+    new_username = data.get("new_username", "").strip()
+    new_password = data.get("new_password", "")
+
+    if not current_password:
+        return jsonify({"ok": False, "message": "請輸入目前密碼"}), 400
+
+    cfg = _read_yaml()
+    users = cfg.get("webgui", {}).get("users", {})
+    current_username = session.get("username", "")
+
+    # 驗證目前密碼
+    if not current_username or users.get(current_username) != current_password:
+        logger.warning(f"帳號密碼修改失敗（目前密碼錯誤）：user={current_username} from {request.remote_addr}")
+        return jsonify({"ok": False, "message": "目前密碼錯誤"}), 400
+
+    # 決定目標帳號名稱
+    target_username = new_username if new_username else current_username
+
+    # 驗證新密碼長度
+    if new_password and len(new_password) < 6:
+        return jsonify({"ok": False, "message": "新密碼至少 6 個字元"}), 400
+
+    # 更新 settings.yaml
+    if "webgui" not in cfg:
+        cfg["webgui"] = {}
+    if "users" not in cfg["webgui"]:
+        cfg["webgui"]["users"] = {}
+
+    # 若帳號名稱改變，刪除舊 key
+    if target_username != current_username and current_username in cfg["webgui"]["users"]:
+        del cfg["webgui"]["users"][current_username]
+
+    # 更新密碼（若未提供新密碼則保留舊密碼）
+    cfg["webgui"]["users"][target_username] = new_password if new_password else current_password
+
+    try:
+        _write_yaml(cfg)
+    except PermissionError as e:
+        return jsonify({"ok": False, "message": str(e)}), 500
+
+    logger.info(f"帳號密碼已更新：{current_username} → {target_username}")
+
+    # 更新 session 中的 username（不立即登出，讓 reload 後重新登入）
+    session["username"] = target_username
+
+    # 觸發 gunicorn graceful reload，讓 webhook_server.py 重新載入 WEBGUI_USERS
+    _deferred_reload(2.0)
+
+    return jsonify({
+        "ok": True,
+        "message": "帳號密碼已更新，服務將在 2 秒後重載，請重新登入",
+        "need_relogin": True
+    })

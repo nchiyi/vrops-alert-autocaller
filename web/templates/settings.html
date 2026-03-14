@@ -328,6 +328,74 @@
   </div>
 </div>
 
+<!-- ── 帳號密碼管理 ─────────────────────────── -->
+<div class="card">
+  <h3 style="margin-bottom:16px;"><i class="fas fa-user-cog"></i> 帳號密碼管理</h3>
+
+  <div id="pwd-change-result" style="display:none; margin-bottom:12px;"></div>
+
+  <div class="settings-grid">
+    <div class="form-group">
+      <label>目前帳號</label>
+      <input value="{{ session.get('username', 'admin') | e }}" disabled
+             style="background:var(--bg-hover); color:var(--text-secondary); cursor:default;">
+    </div>
+    <div class="form-group">
+      <label>目前密碼 <span style="color:var(--danger);">*</span></label>
+      <div style="position:relative;">
+        <input id="pwd-current" type="password"
+               placeholder="必填，用於驗證身份"
+               autocomplete="current-password">
+        <button type="button" onclick="togglePwd('pwd-current')"
+                style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-secondary);cursor:pointer;">
+          <i class="fas fa-eye" id="eye-pwd-current"></i>
+        </button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>新帳號（留空則不修改）</label>
+      <input id="pwd-new-username"
+             placeholder="{{ session.get('username', 'admin') | e }}"
+             autocomplete="username">
+    </div>
+    <div class="form-group">
+      <label>新密碼（留空則不修改，至少 6 個字元）</label>
+      <div style="position:relative;">
+        <input id="pwd-new" type="password"
+               placeholder="留空表示不修改"
+               autocomplete="new-password">
+        <button type="button" onclick="togglePwd('pwd-new')"
+                style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-secondary);cursor:pointer;">
+          <i class="fas fa-eye" id="eye-pwd-new"></i>
+        </button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>確認新密碼</label>
+      <div style="position:relative;">
+        <input id="pwd-confirm" type="password"
+               placeholder="再次輸入新密碼"
+               autocomplete="new-password">
+        <button type="button" onclick="togglePwd('pwd-confirm')"
+                style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-secondary);cursor:pointer;">
+          <i class="fas fa-eye" id="eye-pwd-confirm"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:16px;">
+    <button class="btn btn-primary" id="btn-change-pwd" onclick="changePassword()">
+      <i class="fas fa-key"></i> 更新帳號密碼
+    </button>
+  </div>
+
+  <div class="notice-box notice-info" style="margin-top:12px;">
+    <i class="fas fa-info-circle"></i>
+    <span>修改後服務將自動重載（約 2 秒），並跳轉至登入頁面。僅修改帳號或僅修改密碼均可，未填欄位保留原值。</span>
+  </div>
+</div>
+
 <!-- ── 儲存按鈕 ──────────────────────────────── -->
 <div style="display:flex; justify-content:flex-end; align-items:center; gap:16px; margin-top:8px;">
   <span id="save-status" style="color:var(--text-secondary); font-size:0.9em;"></span>
@@ -667,6 +735,47 @@ async function uploadCert() {
   } finally {
     btn.disabled = false;
     btn.innerHTML = '<i class="fas fa-upload"></i> 上傳並套用憑證';
+  }
+}
+
+// ── 修改帳號密碼 ──────────────────────────────
+async function changePassword() {
+  var currentPwd  = document.getElementById('pwd-current').value;
+  var newUsername = document.getElementById('pwd-new-username').value.trim();
+  var newPwd      = document.getElementById('pwd-new').value;
+  var confirmPwd  = document.getElementById('pwd-confirm').value;
+
+  if (!currentPwd) { showToast('請輸入目前密碼', true); return; }
+  if (newPwd && newPwd !== confirmPwd) { showToast('兩次輸入的新密碼不一致', true); return; }
+  if (newPwd && newPwd.length < 6)    { showToast('新密碼至少 6 個字元', true); return; }
+  if (!newUsername && !newPwd) { showToast('請至少填寫新帳號或新密碼其中一項', true); return; }
+
+  var btn = document.getElementById('btn-change-pwd');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 更新中...';
+
+  try {
+    var res = await fetch('/api/auth/password', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        current_password: currentPwd,
+        new_username:     newUsername,
+        new_password:     newPwd
+      })
+    });
+    if (res.status === 401) { window.location.href = '/login'; return; }
+    var data = await res.json();
+    setResultBox('pwd-change-result', !!data.ok, data.message || '');
+    if (data.ok && data.need_relogin) {
+      showToast('帳號密碼已更新，3 秒後跳轉至登入頁...');
+      setTimeout(function() { window.location.href = '/logout'; }, 3000);
+    }
+  } catch(e) {
+    setResultBox('pwd-change-result', false, '更新失敗：' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-key"></i> 更新帳號密碼';
   }
 }
 
